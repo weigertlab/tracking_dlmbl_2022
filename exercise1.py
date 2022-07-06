@@ -15,28 +15,38 @@
 
 # %% [markdown]
 # # Exercise 1/3: Tracking by detection and simple frame-by-frame matching
+#
+# You can run this notebook on your laptop, a GPU is not needed :).
 
 # %% [markdown]
 # ## Install dependencies and import packages
 
 # %%
-# !pip install -q tensorflow
-# !pip install -q stardist
+# # !pip install -q tensorflow
+# # !pip install -q stardist
+# # !pip install nest_asyncio
 
 # %%
 from urllib.request import urlretrieve
 from pathlib import Path
 
+import matplotlib
 import matplotlib.pyplot as plt
 # %matplotlib inline
-matplotlib.rcParams['figure.figsize'] = (12, 8)
+matplotlib.rcParams["image.interpolation"] = None
+matplotlib.rcParams['figure.figsize'] = (14, 10)
 from tifffile import imread
 from tqdm import tqdm
 
 from stardist import fill_label_holes, random_label_cmap
 from stardist.plot import render_label
 from stardist.models import StarDist2D
+from stardist import _draw_polygons
 from csbdeep.utils import normalize
+
+import nest_asyncio
+nest_asyncio.apply()
+import napari
 
 lbl_cmap = random_label_cmap()
 
@@ -48,16 +58,18 @@ lbl_cmap = random_label_cmap()
 def plot_img_label(img, lbl, img_title="image", lbl_title="label", **kwargs):
     fig, (ai,al) = plt.subplots(1,2, gridspec_kw=dict(width_ratios=(1,1)))
     im = ai.imshow(img, cmap='gray', clim=(0,1))
-    ai.set_title(img_title)    
+    ai.set_title(img_title)
+    ai.axis("off")
     al.imshow(render_label(lbl, img=.3*img, normalize_img=False, cmap=lbl_cmap))
     al.set_title(lbl_title)
+    al.axis("off")
     plt.tight_layout()
     
 def preprocess(X, Y, axis_norm=(0,1)):
     # normalize channels independently
-    X = [normalize(x, 1, 99.8, axis=axis_norm) for x in tqdm(X, leave=True, desc="Normalize images")]
+    X = np.array([normalize(x, 1, 99.8, axis=axis_norm) for x in tqdm(X, leave=True, desc="Normalize images")])
     # fill holes in labels
-    Y = [fill_label_holes(y) for y in tqdm(Y, leave=True, desc="Fill holes in labels")]
+    Y = np.array([fill_label_holes(y) for y in tqdm(Y, leave=True, desc="Fill holes in labels")])
     return X, Y
 
 
@@ -77,13 +89,17 @@ else:
     # !unzip -q data/cancer_cell_migration.zip -d data
 
 # %% [markdown]
-# Load the dataset: Images and tracking annotations.
+# Load the dataset (images and tracking annotations) from disk.
 
 # %%
-x = [imread(xi) for xi in sorted((base_path / "images").glob("*.tif"))]
-y = [imread(yi) for yi in sorted((base_path / "gt_tracking").glob("*.tif"))]
+x = np.array([imread(xi) for xi in sorted((base_path / "images").glob("*.tif"))])
+y = np.array([imread(yi) for yi in sorted((base_path / "gt_tracking").glob("*.tif"))])
 assert len(x) == len(y)
 print(f"Number of images: {len(x)}")
+
+# %%
+x = x[:, 300:, :]
+y = y[:, 300:, :]
 
 # %%
 # # !pip install ipywidgets
@@ -93,22 +109,53 @@ x, y = preprocess(x, y)
 # Visualize some images
 
 # %%
-idx = 50
-plot_img_label(x[0], y[0])
-# TODO slider for time series
+idx = 0
+plot_img_label(x[idx], y[idx])
 
 # %% [markdown]
-# Load a pretrained stardist models and detect nuclei
+# This is ok to take a glimpse, but a dynamic viewer would be much better. Let's use [napari](https://napari.org/tutorials/fundamentals/getting_started.html) for this.
+#
+# We can easily explore how the nuclei move over time and see that the ground truth annotations are consistent over time. If you zoom in, you will note that the annotations are not perfect segmentations, but rather circular objects placed roughly in the center of each nucleus.
 
 # %%
+viewer = napari.Viewer()
+viewer.add_image(x)
+viewer.add_labels(y)
+
+# %% [markdown]
+# Load a pretrained stardist models, detect nuclei in one image and visualize them.
+
+# %% tags=[]
+idx = 0
 model = StarDist2D.from_pretrained("2D_versatile_fluo")
-labels, details = model.predict_instances(x[0], n_tiles=(2,2))
-
-# %% [markdown]
-# Visualize detections and understand them visually
+detections, details = model.predict_instances(x[idx], scale=(1,1))
+plot_img_label(x[idx], detections)
 
 # %%
-print("test")
+coord, points, prob = details['coord'], details['points'], details['prob']
+_draw_polygons(coord, points, prob, show_dist=True)
+plt.imshow(x[idx], cmap='gray'); plt.axis('off')
+# plt.imshow(labels, cmap=lbl_cmap, alpha=0.5)
+plt.tight_layout()
+plt.show()
+
+# %% [markdown]
+# <div class="alert alert-block alert-info"><h2>1) Parameter exploration</h2>
+#
+# Explore the following aspects of the detection algorithm:
+#     
+# - The `scale` parameter downscales the images by the given factor before feeding them to the neural network. What happens if you increase it?
+# - Inspect false positive and false negative detections. Do you observe pattern?
+#     
+# </div>
+
+# %% [markdown]
+# Detect nuclei in all images of the time lapse.
+
+# %%
+pred, details = model.predict_instances(x[idx])
+Y_val_pred = [model.predict_instances(x, show_tile_progress=False)[0]
+              for x in tqdm(X_val)]
 
 # %% [markdown]
 # Extract IoU feature method
