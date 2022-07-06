@@ -10,7 +10,7 @@ TODO
     Here we will walk through all basic components of a tracking-by-detection algorithm.
     
     You will learn
-    - to use a robust pretrained deep-learning-based **object detection** called _StarDist_.
+    - to use a robust pretrained deep-learning-based **object detection** algorithm called _StarDist_.
     - to compute suitable object **features** for the object linking process with `scikit-image`.
     - to set up the optimal algorithm for **frame-by-frame matching** called _Hungarian matching_ and to use a solver in python.
     - to **evaluate the output** of a tracking algorithm against a ground truth annotation.
