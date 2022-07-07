@@ -9,7 +9,7 @@
 
 TODO
 
-## Exercises:
+## Exercises
 
 1. Tracking by detection and simple frame by frame matching
 
