@@ -1,6 +1,6 @@
 # Exercise 8 - Tracking
 
-## Questions
+## Questions (will be removed)
 
 - Notebooks do not need a GPU. Can we ask participants to run locally (and thereby easily use napari for visus)?
 - Experience from last year: How much content?
