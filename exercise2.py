@@ -132,6 +132,6 @@ from tqdm import tqdm
 # %%
 
 # %% [markdown]
-# Inspect and correct results
+# Inspect results
 
 # %%

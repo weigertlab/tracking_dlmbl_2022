@@ -67,9 +67,9 @@ def plot_img_label(img, lbl, img_title="image", lbl_title="label", **kwargs):
     
 def preprocess(X, Y, axis_norm=(0,1)):
     # normalize channels independently
-    X = np.array([normalize(x, 1, 99.8, axis=axis_norm) for x in tqdm(X, leave=True, desc="Normalize images")])
+    X = np.stack([normalize(x, 1, 99.8, axis=axis_norm) for x in tqdm(X, leave=True, desc="Normalize images")])
     # fill holes in labels
-    Y = np.array([fill_label_holes(y) for y in tqdm(Y, leave=True, desc="Fill holes in labels")])
+    Y = np.stack([fill_label_holes(y) for y in tqdm(Y, leave=True, desc="Fill holes in labels")])
     return X, Y
 
 
@@ -92,8 +92,8 @@ else:
 # Load the dataset (images and tracking annotations) from disk.
 
 # %%
-x = np.array([imread(xi) for xi in sorted((base_path / "images").glob("*.tif"))])
-y = np.array([imread(yi) for yi in sorted((base_path / "gt_tracking").glob("*.tif"))])
+x = np.stack([imread(xi) for xi in sorted((base_path / "images").glob("*.tif"))])
+y = np.stack([imread(yi) for yi in sorted((base_path / "gt_tracking").glob("*.tif"))])
 assert len(x) == len(y)
 print(f"Number of images: {len(x)}")
 print(f"Image shape: {x[0].shape}")
@@ -132,15 +132,31 @@ viewer.add_labels(y);
 idx = 0
 model = StarDist2D.from_pretrained("2D_versatile_fluo")
 detections, details = model.predict_instances(x[idx], scale=(1,1))
-plot_img_label(x[idx], detections)
+plot_img_label(x[idx], detections, lbl_title="detections")
+
+# %% [markdown]
+# Here we visualize in detail the polygons we have detected with StarDist. TODO more description
+#
+# Notice that each object comes with a center point, which we can use to compute pairwise euclidian distances between objects.
 
 # %%
 coord, points, prob = details['coord'], details['points'], details['prob']
+plt.figure(figsize=(20,20))
+plt.subplot(211)
+plt.title("Predicted Polygons")
 _draw_polygons(coord, points, prob, show_dist=True)
 plt.imshow(x[idx], cmap='gray'); plt.axis('off')
-# plt.imshow(labels, cmap=lbl_cmap, alpha=0.5)
+
+# plt.subplot(312)
+# plt.title("Ground truth tracking anntotations")
+# plt.imshow(x[idx], cmap='gray')
+# plt.imshow(y[idx], cmap=lbl_cmap, alpha=0.5); plt.axis('off')
+
+plt.subplot(212)
+plt.title("Object center probability")
+plt.imshow(x[idx], cmap='magma'); plt.axis('off')
 plt.tight_layout()
-plt.show()
+plt.show() 
 
 # %% [markdown]
 # <div class="alert alert-block alert-info"><h3>Exercise 1.1: Parameter exploration of detection</h3>
@@ -153,24 +169,63 @@ plt.show()
 # </div>
 
 # %% [markdown]
-# Detect nuclei in all images of the time lapse.
+# Detect centers and segment nuclei in all images of the time lapse.
 
 # %%
-pred, details = model.predict_instances(x[idx])
-Y_val_pred = [model.predict_instances(x, show_tile_progress=False)[0]
-              for x in tqdm(X_val)]
+pred = [model.predict_instances(xi, show_tile_progress=False, scale=(1,1))
+              for xi in tqdm(x)]
+detections = np.stack([xi[0] for xi in pred])
+centers = [xi[1]["points"] for xi in pred]
+
+# %%
+print(detections[0].max())
+print(len(centers[0]))
 
 # %% [markdown]
-# Extract center of mass distance/IoU for a pair of frames
+# Visualize the unlinked dense detections
 
 # %%
-# TODO given
+viewer = napari.Viewer()
+viewer.add_image(x)
+viewer.add_labels(detections);
+
+# %% [markdown]
+# We see that the number of detections increases over time, corresponding to the cells that insert the field of view from below during the video.
+
+# %%
+plt.figure(figsize=(10,6))
+plt.bar(range(len(centers)), [len(xi) for xi in centers])
+plt.title("Number of detections in each frame")
+# TODO clean up plot
+plt.show();
+
+
+# %% [markdown]
+# Function to compute pairwise euclidian distance for detections in two adjacent frames.
+
+# %%
+def euclidian_distance(start_points, end_points):
+    # TODO vectorize
+    dists = []
+    for sp in start_points:
+        for ep in end_points:
+            dists.append(np.sqrt(((sp - ep)**2).sum()))
+            
+    dists = np.array(dists).reshape(len(start_points), len(end_points))
+    return dists
+
+
+# %%
+dist0 = euclidian_distance(centers[0], centers[1])
+plt.figure(figsize=(5,5))
+plt.title("Pairwise distance matrix")
+plt.imshow(dist0);
 
 # %% [markdown]
 # Greedy linking by nearest neighbor
 
 # %% [markdown]
-# <div class="alert alert-block alert-info"><h3>Exercise 1.2: Implement a thresholded nearest neighbor linking function</h3>
+# <div class="alert alert-block alert-info"><h3>Exercise 1.2: Complete a basic thresholded nearest neighbor linking function</h3>
 #
 # Given a cost matrix for detections in a pair of frames, implement a neighest neighbor function:    
 # - For each detection in frame $t$, find the nearest neighbor in frame $t+1$. If the distance is below a threshold $\tau$, link the two objects.
@@ -179,12 +234,64 @@ Y_val_pred = [model.predict_instances(x, show_tile_progress=False)[0]
 # </div>
 
 # %%
+print(detections[0].shape)
+
+# %%
+from skimage.segmentation import relabel_sequential
+
+# TODO fix
+
+# TODO introduce gaps in function to fill
+def nearest_neighbor_linking(detections, features, cost_function, thres=None):
+    """Links the dense detections based on a cost function that takes features of two adjacent frames as input.
+    
+    TODO docstring
+    """
+    # TODO clean up
+    tracks = [detections[0]]
+    track_ids = list(range(1, detections[0].max() + 1))
+    n_tracks = detections[0].max()
+    # print(track_ids)
+    # print(n_tracks)
+    for i in tqdm(range(len(detections) - 1)):
+        cost_matrix = cost_function(features[i], features[i+1])
+        argmin = np.argmin(cost_matrix, axis=1)
+        print(argmin.max())
+        # print(cost_matrix.shape)
+        # print(argmin.shape)
+        min_dist = np.take_along_axis(cost_matrix, np.expand_dims(argmin, 1), axis=1)
+        # print(min_dist.shape)
+        
+        linked = []
+        new_frame = np.copy(detections[i+1])
+        new_ids = []
+        for i_in, (md, am) in enumerate(zip(min_dist, argmin)):
+            if not thres or md < thres:
+                new_frame[new_frame == am + 1] = track_ids[i_in] + 1
+                new_ids.append(track_ids[i_in] + 1)
+                
+        track_ids = new_ids                                
+        tracks.append(new_frame)
+        
+    
+        # Start new track for all non-linked tracks
+        
+    
+    return np.stack(tracks)
+
+# %%
+tracks = nearest_neighbor_linking(detections, centers, euclidian_distance, thres=20)
+print(tracks.shape)
 
 # %% [markdown]
 # Visualize results
 
 # %%
-# use napari again
+viewer = napari.Viewer()
+viewer.add_image(x)
+viewer.add_labels(tracks);
+
+# TODO visualize each track as line in corresponding color.
 
 # %% [markdown]
 # Model the global drift and run nearest neighbor again
@@ -202,13 +309,13 @@ Y_val_pred = [model.predict_instances(x, show_tile_progress=False)[0]
 # Hungarian matching (scipy.optimize.linear_sum)
 
 # %%
-# given
+# TODO given
 
 # %% [markdown]
 # Load ground truth and compute a metric
 
 # %%
-# given
+# TODO given
 
 # %% [markdown]
 # Compute other features with scikit-image to play with cost function
