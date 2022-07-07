@@ -96,14 +96,16 @@ x = np.array([imread(xi) for xi in sorted((base_path / "images").glob("*.tif"))]
 y = np.array([imread(yi) for yi in sorted((base_path / "gt_tracking").glob("*.tif"))])
 assert len(x) == len(y)
 print(f"Number of images: {len(x)}")
+print(f"Image shape: {x[0].shape}")
 
 # %%
 # TODO crop the dataset in time and space to reduce runtime
-x = x[:, 300:, :]
-y = y[:, 300:, :]
+x = x[:20, 300:, :]
+y = y[:20, 300:, :]
+print(f"Number of images: {len(x)}")
+print(f"Image shape: {x[0].shape}")
 
 # %%
-# # !pip install ipywidgets
 x, y = preprocess(x, y)
 
 # %% [markdown]
@@ -121,10 +123,10 @@ plot_img_label(x[idx], y[idx])
 # %%
 viewer = napari.Viewer()
 viewer.add_image(x)
-viewer.add_labels(y)
+viewer.add_labels(y);
 
 # %% [markdown]
-# Load a pretrained stardist models, detect nuclei in one image and visualize them.
+# Load a pretrained stardist model, detect nuclei in one image and visualize them.
 
 # %% tags=[]
 idx = 0
@@ -141,11 +143,11 @@ plt.tight_layout()
 plt.show()
 
 # %% [markdown]
-# <div class="alert alert-block alert-info"><h3>Exercise 1.1 (parameter exploration)</h3>
+# <div class="alert alert-block alert-info"><h3>Exercise 1.1: Parameter exploration of detection</h3>
 #
 # Explore the following aspects of the detection algorithm:
 #     
-# - The `scale` parameter downscales the images by the given factor before feeding them to the neural network. What happens if you increase it?
+# - The `scale` parameter of the function `predict_instances` downscales the images by the given factor before feeding them to the neural network. What happens if you increase it?
 # - Inspect false positive and false negative detections. Do you observe patterns?
 #     
 # </div>
@@ -159,22 +161,22 @@ Y_val_pred = [model.predict_instances(x, show_tile_progress=False)[0]
               for x in tqdm(X_val)]
 
 # %% [markdown]
-# Extract IoU feature method
+# Extract center of mass distance/IoU for a pair of frames
 
 # %%
+# TODO given
 
 # %% [markdown]
 # Greedy linking by nearest neighbor
 
-# %%
-
 # %% [markdown]
-# Load ground truth and compute a metric
-
-# %%
-
-# %% [markdown]
-# Hungarian matching (scipy.optimize.linear_sum)
+# <div class="alert alert-block alert-info"><h3>Exercise 1.2: Implement a thresholded nearest neighbor linking function</h3>
+#
+# Given a cost matrix for detections in a pair of frames, implement a neighest neighbor function:    
+# - For each detection in frame $t$, find the nearest neighbor in frame $t+1$. If the distance is below a threshold $\tau$, link the two objects.
+# - Do the above sequentially for each pair of adjacent frames.
+#     
+# </div>
 
 # %%
 
@@ -182,8 +184,40 @@ Y_val_pred = [model.predict_instances(x, show_tile_progress=False)[0]
 # Visualize results
 
 # %%
+# use napari again
+
+# %% [markdown]
+# Model the global drift and run nearest neighbor again
+
+# %% [markdown]
+# <div class="alert alert-block alert-info"><h3>Exercise 1.3: Estimate the global drift of the data</h3>
+#
+# We observe that all cells move upwards in what appears to be a constant motion. Modify the cost function to take this into account and run the neareast neighbor linking again.
+#
+# </div>
+
+# %%
+
+# %% [markdown]
+# Hungarian matching (scipy.optimize.linear_sum)
+
+# %%
+# given
+
+# %% [markdown]
+# Load ground truth and compute a metric
+
+# %%
+# given
 
 # %% [markdown]
 # Compute other features with scikit-image to play with cost function
+
+# %% [markdown]
+# <div class="alert alert-block alert-info"><h3>Exercise 1.4: Explore different features for hungarian matching</h3>
+#
+# Explore running the hungarian matching algorithm from above with different `scikit-image` region properties and inspect the results. 
+#     
+# </div>
 
 # %%

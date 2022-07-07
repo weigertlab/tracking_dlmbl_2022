@@ -80,16 +80,26 @@ from tqdm import tqdm
 # %% [markdown]
 # <div class="alert alert-block alert-info"><h3>Exercise 2.1: Cost matrix for gap closing</h3>
 #
-# Set up the cost matrix for gap closing.
+# Set up the cost matrix for gap closing. We will not consider the part for merging/splitting here.
 #     
 # </div>
 
+# %% [markdown]
+# <img src="figures/LAP_cost_matrix_2.png" width="500"/>
+
+# %% [markdown]
+# Run the LAP
+
 # %%
+
+# %% [markdown]
+#
 
 # %% [markdown]
 # ## Visualize results
 
 # %%
+# napari
 
 # %% [markdown]
 # ## Run the full linear assignment problem in Trackmate
