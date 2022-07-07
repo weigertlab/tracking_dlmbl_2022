@@ -18,7 +18,7 @@ TODO
     You will learn
     - to use a robust pretrained deep-learning-based **object detection** algorithm called _StarDist_.
     - to implement a basic nearest-neighbor linking algorithm.
-    - to set up the optimal algorithm for **frame-by-frame linking** called _Hungarian matching_ and to use a solver in python.
+    - to compute the optimal **frame-by-frame linking** by setting up a bipartite graph matching problem ("Hungarian matching") and using a python-based solver.
     - to **evaluate the output** of a tracking algorithm against a ground truth annotation.
     - to compute suitable **features** for the object linking process with `scikit-image`.
 
