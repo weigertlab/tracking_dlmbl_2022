@@ -30,7 +30,7 @@ TODO
     
     You will learn
     - to set up a **network flow** using `networkx`, which allows to find a global optimum solution for small-scale problems, but without modeling cell divisions.
-    (- to formulate an **integer linear program (ILP)** to find a global optimum solution for small-scale tracking problems with `cvxopt`.)
+    - (to formulate an **integer linear program (ILP)** to find a global optimum solution for small-scale tracking problems with `cvxopt`.)
 
 ## Internal agenda: (will be removed)
 
