@@ -98,6 +98,7 @@ assert len(x) == len(y)
 print(f"Number of images: {len(x)}")
 
 # %%
+# TODO crop the dataset in time and space to reduce runtime
 x = x[:, 300:, :]
 y = y[:, 300:, :]
 
@@ -140,12 +141,12 @@ plt.tight_layout()
 plt.show()
 
 # %% [markdown]
-# <div class="alert alert-block alert-info"><h2>1) Parameter exploration</h2>
+# <div class="alert alert-block alert-info"><h3>Exercise 1.1 (parameter exploration)</h3>
 #
 # Explore the following aspects of the detection algorithm:
 #     
 # - The `scale` parameter downscales the images by the given factor before feeding them to the neural network. What happens if you increase it?
-# - Inspect false positive and false negative detections. Do you observe pattern?
+# - Inspect false positive and false negative detections. Do you observe patterns?
 #     
 # </div>
 
@@ -178,13 +179,11 @@ Y_val_pred = [model.predict_instances(x, show_tile_progress=False)[0]
 # %%
 
 # %% [markdown]
-# Compute other features with scikit-image to play with cost function
+# Visualize results
 
 # %%
 
-# %% [markdown] tags=[]
-# <div class="alert alert-block alert-info"><h2>Exercise</h2>
-#
-# Test
-#     
-# </div>
+# %% [markdown]
+# Compute other features with scikit-image to play with cost function
+
+# %%

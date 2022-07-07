@@ -15,6 +15,11 @@
 
 # %% [markdown]
 # # Exercise 3/3: Advanced topics and linear optimization
+#
+# You can run this notebook on your laptop, a GPU is not needed :).
+
+# %% [markdown]
+# ## Install dependencies and import packages
 
 # %%
 from pathlib import Path
@@ -24,5 +29,29 @@ import matplotlib.pyplot as plt
 matplotlib.rcParams['figure.figsize'] = (12, 8)
 from tifffile import imread
 from tqdm import tqdm
+
+# %% [markdown]
+# ## Load and prepare the dataset
+
+# %%
+
+# %% [markdown]
+# ## Extract detections
+
+# %%
+
+# %% [markdown]
+# ## Set up network flow
+
+# %% [markdown]
+# TODO write brief intro to network flow.
+
+# %% [markdown]
+# <div class="alert alert-block alert-info"><h3>Exercise 3.1: Set up network flow with simple cost function</h3>
+#
+# We follow the formulation in [Schulter et al. (2017). Deep network flow for multi-object tracking](https://openaccess.thecvf.com/content_cvpr_2017/papers/Schulter_Deep_Network_Flow_CVPR_2017_paper.pdf), but do not parametrize the costs.
+#     
+#
+# </div>
 
 # %%
