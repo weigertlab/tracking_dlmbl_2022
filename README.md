@@ -3,6 +3,8 @@
 
 TODO
 
+Notebooks do not need a GPU, can be run either on participants' laptops or in Google Colab. 
+
 ## Exercises:
 
 1. Tracking by detection and simple frame by frame matching
