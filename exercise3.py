@@ -53,6 +53,8 @@ from tqdm import tqdm
 # TODO write brief intro to network flow.
 
 # %% [markdown]
+# ## Exercise 3.1
+#
 # <div class="alert alert-block alert-info"><h3>Exercise 3.1: Set up network flow with simple cost function</h3>
 #
 # We follow the formulation in [Schulter et al. (2017). Deep network flow for multi-object tracking](https://openaccess.thecvf.com/content_cvpr_2017/papers/Schulter_Deep_Network_Flow_CVPR_2017_paper.pdf), but do not parametrize the costs.

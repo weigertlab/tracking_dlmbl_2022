@@ -21,11 +21,13 @@
 # Here we will walk through all basic components of a tracking-by-detection algorithm.
 #     
 # You will learn
-# - to use a robust pretrained deep-learning-based **object detection** algorithm called _StarDist_.
-# - to implement a basic nearest-neighbor linking algorithm.
-# - to set up the optimal algorithm for **frame-by-frame linking** called _Hungarian matching_ and to use a solver in python.
+# - to use a robust pretrained deep-learning-based **object detection** algorithm called _StarDist_ (Exercise 1.1).
+# - to implement a basic nearest-neighbor linking algorithm (Exercises 1.2 + 1.3).
+# - to compute the optimal frame-by-frame linking by setting up a bipartite graph matching problem ("Hungarian matching") and using a python-based solver (Exercise 1.4).
 # - to **evaluate the output** of a tracking algorithm against a ground truth annotation.
-# - to compute suitable object **features** for the object linking process with `scikit-image`.
+# - to compute suitable object **features** for the object linking process with `scikit-image` (Exercise 1.5).
+#
+# <!-- TODO link the learning points to the subsections of the notebook. -->
 
 # %%
 # TODO input output images to show the task
@@ -85,7 +87,7 @@ def preprocess(X, Y, axis_norm=(0,1)):
     return X, Y
 
 
-# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# %% [markdown] tags=[]
 # ## Inspect the dataset
 
 # %% [markdown]
@@ -139,11 +141,13 @@ viewer = napari.Viewer()
 viewer.add_image(x)
 viewer.add_labels(y);
 
-# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# %% [markdown] tags=[]
 # ## Object detection using a pre-trained neural network
 
-# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# %% [markdown] tags=[]
 # ### Load a pretrained stardist model, detect nuclei in one image and visualize them.
+#
+# TODO use the model pre-trained on this dataset instead of the general fluorescence nuclei model.
 
 # %% tags=[]
 idx = 0
@@ -175,8 +179,8 @@ plt.imshow(x[idx], cmap='magma'); plt.axis('off')
 plt.tight_layout()
 plt.show() 
 
-# %% [markdown] tags=[]
-# ### Exercise 1.1
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# ## Exercise 1.1
 # <div class="alert alert-block alert-info"><h3>Exercise 1.1: Parameter exploration of detection</h3>
 #
 # Explore the following aspects of the detection algorithm:
@@ -215,6 +219,12 @@ plt.show();
 
 
 # %% [markdown]
+# ## Checkpoint 1: We have good detections, now on to the linking.
+
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# ## Greedy linking by nearest neighbor
+
+# %% [markdown] tags=[]
 # Function to compute pairwise euclidian distance for detections in two adjacent frames.
 
 # %%
@@ -235,11 +245,8 @@ plt.figure(figsize=(5,5))
 plt.title("Pairwise distance matrix")
 plt.imshow(dist0);
 
-# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
-# ## Greedy linking by nearest neighbor
-
 # %% [markdown] tags=[]
-# ### Exercise 1.2
+# ## Exercise 1.2
 # <div class="alert alert-block alert-info"><h3>Exercise 1.2: Complete a basic thresholded nearest neighbor linking function</h3>
 #
 # Given a cost matrix for detections in a pair of frames, implement a neighest neighbor function:    
@@ -303,8 +310,11 @@ viewer.add_labels(tracks);
 
 # TODO visualize each track as line in corresponding color.
 
-# %% [markdown] tags=[]
-# ### Exercise 1.3
+# %% [markdown]
+# ## Checkpoint 2: We have a working basic tracking algorithm :)
+
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# ## Exercise 1.3
 # <div class="alert alert-block alert-info"><h3>Exercise 1.3: Estimate the global drift of the data</h3>
 #
 # We observe that all cells move upwards in what appears to be a constant motion. Modify the cost function `euclidian distance` from above to take this into account and run the neareast neighbor linking again.
@@ -334,11 +344,11 @@ viewer.add_labels(tracks_drift_correction);
 
 # TODO visualize each track as line in corresponding color.
 
-# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# %% [markdown] tags=[]
 # ## Optimal frame-by-frame matching ("Hungarian matching algorithm")
 
-# %% [markdown]
-# ### Exercise 1.4
+# %% [markdown] jp-MarkdownHeadingCollapsed=true tags=[]
+# ## Exercise 1.4
 # <div class="alert alert-block alert-info"><h3>Exercise 1.4: Perform optimal frame-by-frame linking</h3>
 #
 # Set up the cost matrix such that you can use [`scipy.optimize.linear_sum_assignment`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.linear_sum_assignment.html) to solve the matching problem in the bipartite graph.
@@ -355,18 +365,20 @@ viewer.add_labels(tracks_drift_correction);
 # %%
 # TODO given
 
-# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# %% [markdown] tags=[]
 # ## Other suitable features for linking cost function
 
-# %%
-Compute other features with scikit-image to play with cost function
+# %% [markdown]
+# Compute other features with scikit-image to play with cost function
 
 # %% [markdown]
-# ### Exercise 1.5
+# ## Exercise 1.5
 #
 # <div class="alert alert-block alert-info"><h3>Exercise 1.5: Explore different features for hungarian matching</h3>
 #
 # Explore running the hungarian matching algorithm from above with different `scikit-image` region properties and inspect the results. 
+#
+# Feel free to share tracking runs for which your features improved the results.
 #     
 # </div>
 

@@ -51,7 +51,7 @@ from tqdm import tqdm
 # %% [markdown]
 #
 
-# %% [markdown] tags=[]
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Introduction to the linear assignment problem (LAP)
 #
 # In the previous exercise, we have been able to track individual cells over time by linking detections frame-by-frame. However, there are multiple processes that this approach is not able to capture:
@@ -81,21 +81,21 @@ from tqdm import tqdm
 # %%
 # TODO cost matrix and setup will be given
 
-# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# %% [markdown] tags=[]
 # ## Segment linking
 
-# %% [markdown]
-# ### Exercise 2.1
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# ## Exercise 2.1
 #
 # <div class="alert alert-block alert-info"><h3>Exercise 2.1: Cost matrix for gap closing</h3>
 #
 # Set up the cost matrix for gap closing. We will not consider the part for merging/splitting here.
 #
-#     # TODO implement both gap and divisions
 # </div>
-
-# %% [markdown]
+#
 # <img src="figures/LAP_cost_matrix_2.png" width="500"/>
+#
+# Taken from Jaqaman et al. (2008)
 
 # %% [markdown]
 # Run the LAP
@@ -111,13 +111,25 @@ from tqdm import tqdm
 # %%
 # napari
 
-# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
-# ## Run the full linear assignment problem in Trackmate
+# %% [markdown]
+# ## Exercise 2.2
+#
+# <div class="alert alert-block alert-info"><h3>Exercise 2.2: Cost matrix for modeling cell divisions</h3>
+#
+# Extend the cost matrix above to include the costs for modeling cell visions.
+#
+# </div>
 
 # %% [markdown]
-# ### Exercise 2.2
+# ## Checkpoint: We have implemented an advanced linking algorithm in python :)
+
+# %% [markdown] tags=[]
+# ## Run the full linear assignment problem in Trackmate
+
+# %% [markdown] jp-MarkdownHeadingCollapsed=true tags=[]
+# ## Exercise 2.3
 #
-# <div class="alert alert-block alert-info"><h3>Exercise 2.2: Walk through LAP tracking workflow in Trackmate</h3>
+# <div class="alert alert-block alert-info"><h3>Exercise 2.3: Walk through LAP tracking workflow in Trackmate</h3>
 #
 # Use Trackmate to conveniently do tracking using the LAP formulation.
 #     
