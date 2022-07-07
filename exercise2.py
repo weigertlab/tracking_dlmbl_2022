@@ -17,8 +17,15 @@
 # # Exercise 2/3: Tracking with Linear Assignment Problem (LAP)
 #
 # You can run this notebook on your laptop, a GPU is not needed :).
+#
+# Here we will improve the tracking algorithm introduced in exercise 1 by using a linking algorithm that considers more than two frames at a time, the _Linear Assignment Problem_ (LAP).
+#     
+# You will learn
+# - how this formulation addresses **typical challenges of tracking in bioimages**, like cell division and objects temporarily going out of focus.
+# - to set up the two **LAP cost matrices** step by step and how to use a solver in python.
+# - how to use **_Trackmate_**, a versatile ready-to-go implementation of LAP tracking in ImageJ.
 
-# %% [markdown]
+# %% [markdown] jp-MarkdownHeadingCollapsed=true tags=[]
 # ## Install dependencies and import packages
 
 # %%
@@ -30,12 +37,12 @@ matplotlib.rcParams['figure.figsize'] = (12, 8)
 from tifffile import imread
 from tqdm import tqdm
 
-# %% [markdown]
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Load and prepare the dataset
 
 # %% tags=[]
 
-# %% [markdown]
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Extract detections
 
 # %%
@@ -44,11 +51,11 @@ from tqdm import tqdm
 # %% [markdown]
 #
 
-# %% [markdown]
+# %% [markdown] tags=[]
 # ## Introduction to the linear assignment problem (LAP)
 #
 # In the previous exercise, we have been able to track individual cells over time by linking detections frame-by-frame. However, there are multiple processes that this approach is not able to capture:
-# - For tracing cell lineages, we want to capture the connection between mother and daughter cells in cell divisions. To do this, we have to link one object in frame $n$ to two objects in frame $n+1$, but the matching formulation in exercise 1 only allows one-to-one links.
+# - For tracing cell lineages, we want to capture the connection between mother and daughter cells in cell divisions. To do this, we have to link one object in frame $t$ to two objects in frame $t+1$, but the matching formulation in exercise 1 only allows one-to-one links.
 # - If a cell is not detected in just a single frame, its resulting track will be split apart if we only use frame-by-frame linking.
 #
 # To account for these processes, Jaqaman et al. (2008) have introduced a two-step linking formulation that can be solved using the convenient linear assignment problem (LAP) formulation.
@@ -62,26 +69,29 @@ from tqdm import tqdm
 #
 # [Jaqaman et al. (2008). Robust single-particle tracking in live-cell time-lapse sequences. Nature methods, 5(8), 695-702.](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2747604/)
 
-# %% [markdown]
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Extract features
 
 # %%
 # TODO short version of feature extraction from exercise 1
 
-# %% [markdown]
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Frame-by-frame linking
 
 # %%
 # TODO cost matrix and setup will be given
 
-# %% [markdown]
-# ## Track segment linking
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# ## Segment linking
 
 # %% [markdown]
+# ### Exercise 2.1
+#
 # <div class="alert alert-block alert-info"><h3>Exercise 2.1: Cost matrix for gap closing</h3>
 #
 # Set up the cost matrix for gap closing. We will not consider the part for merging/splitting here.
-#     
+#
+#     # TODO implement both gap and divisions
 # </div>
 
 # %% [markdown]
@@ -95,16 +105,18 @@ from tqdm import tqdm
 # %% [markdown]
 #
 
-# %% [markdown]
-# ## Visualize results
+# %% [markdown] tags=[]
+# ### Visualize results
 
 # %%
 # napari
 
-# %% [markdown]
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Run the full linear assignment problem in Trackmate
 
 # %% [markdown]
+# ### Exercise 2.2
+#
 # <div class="alert alert-block alert-info"><h3>Exercise 2.2: Walk through LAP tracking workflow in Trackmate</h3>
 #
 # Use Trackmate to conveniently do tracking using the LAP formulation.

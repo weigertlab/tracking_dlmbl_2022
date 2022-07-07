@@ -17,6 +17,12 @@
 # # Exercise 3/3: Advanced topics and linear optimization
 #
 # You can run this notebook on your laptop, a GPU is not needed :).
+#
+# Here we will introduce more advanced formulations of tracking.
+#     
+# You will learn
+# - to set up a **network flow** using `networkx`, which allows to find a global optimum solution for small-scale problems, but without modeling cell divisions.
+# - to formulate an **integer linear program (ILP)** to find a global optimum solution for small-scale tracking problems with `cvxopt`.
 
 # %% [markdown]
 # ## Install dependencies and import packages

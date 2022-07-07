@@ -17,8 +17,20 @@
 # # Exercise 1/3: Tracking by detection and simple frame-by-frame matching
 #
 # You can run this notebook on your laptop, a GPU is not needed :).
+#
+# Here we will walk through all basic components of a tracking-by-detection algorithm.
+#     
+# You will learn
+# - to use a robust pretrained deep-learning-based **object detection** algorithm called _StarDist_.
+# - to implement a basic nearest-neighbor linking algorithm.
+# - to set up the optimal algorithm for **frame-by-frame linking** called _Hungarian matching_ and to use a solver in python.
+# - to **evaluate the output** of a tracking algorithm against a ground truth annotation.
+# - to compute suitable object **features** for the object linking process with `scikit-image`.
 
-# %% [markdown]
+# %%
+# TODO input output images to show the task
+
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Install dependencies and import packages
 
 # %%
@@ -73,7 +85,7 @@ def preprocess(X, Y, axis_norm=(0,1)):
     return X, Y
 
 
-# %% [markdown] tags=[]
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Inspect the dataset
 
 # %% [markdown]
@@ -98,8 +110,10 @@ assert len(x) == len(y)
 print(f"Number of images: {len(x)}")
 print(f"Image shape: {x[0].shape}")
 
+# %% [markdown]
+# Crop the dataset in time and space to reduce runtime
+
 # %%
-# TODO crop the dataset in time and space to reduce runtime
 x = x[:20, 300:, :]
 y = y[:20, 300:, :]
 print(f"Number of images: {len(x)}")
@@ -125,8 +139,11 @@ viewer = napari.Viewer()
 viewer.add_image(x)
 viewer.add_labels(y);
 
-# %% [markdown]
-# Load a pretrained stardist model, detect nuclei in one image and visualize them.
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# ## Object detection using a pre-trained neural network
+
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# ### Load a pretrained stardist model, detect nuclei in one image and visualize them.
 
 # %% tags=[]
 idx = 0
@@ -158,7 +175,8 @@ plt.imshow(x[idx], cmap='magma'); plt.axis('off')
 plt.tight_layout()
 plt.show() 
 
-# %% [markdown]
+# %% [markdown] tags=[]
+# ### Exercise 1.1
 # <div class="alert alert-block alert-info"><h3>Exercise 1.1: Parameter exploration of detection</h3>
 #
 # Explore the following aspects of the detection algorithm:
@@ -176,10 +194,6 @@ pred = [model.predict_instances(xi, show_tile_progress=False, scale=(1,1))
               for xi in tqdm(x)]
 detections = np.stack([xi[0] for xi in pred])
 centers = [xi[1]["points"] for xi in pred]
-
-# %%
-print(detections[0].max())
-print(len(centers[0]))
 
 # %% [markdown]
 # Visualize the unlinked dense detections
@@ -221,10 +235,11 @@ plt.figure(figsize=(5,5))
 plt.title("Pairwise distance matrix")
 plt.imshow(dist0);
 
-# %% [markdown]
-# Greedy linking by nearest neighbor
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# ## Greedy linking by nearest neighbor
 
-# %% [markdown]
+# %% [markdown] tags=[]
+# ### Exercise 1.2
 # <div class="alert alert-block alert-info"><h3>Exercise 1.2: Complete a basic thresholded nearest neighbor linking function</h3>
 #
 # Given a cost matrix for detections in a pair of frames, implement a neighest neighbor function:    
@@ -232,9 +247,6 @@ plt.imshow(dist0);
 # - Do the above sequentially for each pair of adjacent frames.
 #     
 # </div>
-
-# %%
-print(detections[0].shape)
 
 # %%
 from skimage.segmentation import relabel_sequential
@@ -249,39 +261,37 @@ def nearest_neighbor_linking(detections, features, cost_function, thres=None):
     """
     # TODO clean up
     tracks = [detections[0]]
-    track_ids = list(range(1, detections[0].max() + 1))
-    n_tracks = detections[0].max()
-    # print(track_ids)
-    # print(n_tracks)
+    track_ids = list(range(detections[0].max()))  # starting at 0 here
+    n_tracks = detections[0].max()  # running index to assign new track numbers
     for i in tqdm(range(len(detections) - 1)):
         cost_matrix = cost_function(features[i], features[i+1])
         argmin = np.argmin(cost_matrix, axis=1)
-        print(argmin.max())
-        # print(cost_matrix.shape)
-        # print(argmin.shape)
         min_dist = np.take_along_axis(cost_matrix, np.expand_dims(argmin, 1), axis=1)
-        # print(min_dist.shape)
         
         linked = []
         new_frame = np.copy(detections[i+1])
-        new_ids = []
+        new_ids = np.zeros(len(range(new_frame.max())))
         for i_in, (md, am) in enumerate(zip(min_dist, argmin)):
             if not thres or md < thres:
-                new_frame[new_frame == am + 1] = track_ids[i_in] + 1
-                new_ids.append(track_ids[i_in] + 1)
-                
-        track_ids = new_ids                                
-        tracks.append(new_frame)
+                new_frame[new_frame == am + 1] = track_ids[i_in] + 1  # +1 offset to account for background in dense
+                new_ids[am] = track_ids[i_in]
         
     
         # Start new track for all non-linked tracks
+        for ni in range(len(new_ids)):
+            if new_ids[ni] == 0:
+                new_ids[ni] = n_tracks + 1
+                n_tracks += 1
         
+        # print(f"Number of total tracks: {n_tracks}")
+        track_ids = new_ids          
+        tracks.append(new_frame)
     
+        # TODO output for napari tracks layers
     return np.stack(tracks)
 
 # %%
-tracks = nearest_neighbor_linking(detections, centers, euclidian_distance, thres=20)
-print(tracks.shape)
+tracks = nearest_neighbor_linking(detections, centers, euclidian_distance, thres=100)
 
 # %% [markdown]
 # Visualize results
@@ -293,23 +303,51 @@ viewer.add_labels(tracks);
 
 # TODO visualize each track as line in corresponding color.
 
-# %% [markdown]
-# Model the global drift and run nearest neighbor again
-
-# %% [markdown]
+# %% [markdown] tags=[]
+# ### Exercise 1.3
 # <div class="alert alert-block alert-info"><h3>Exercise 1.3: Estimate the global drift of the data</h3>
 #
-# We observe that all cells move upwards in what appears to be a constant motion. Modify the cost function to take this into account and run the neareast neighbor linking again.
+# We observe that all cells move upwards in what appears to be a constant motion. Modify the cost function `euclidian distance` from above to take this into account and run the neareast neighbor linking again.
 #
 # </div>
 
 # %%
+def euclidian_distance_drift_correction(start_points, end_points, drift=0):
+    """ 
+    
+    """
+    # Insert your solution here
+    
+    return dists
 
-# %% [markdown]
-# Hungarian matching (scipy.optimize.linear_sum)
 
 # %%
-# TODO given
+tracks_drift_correction = nearest_neighbor_linking(detections, centers, euclidian_distance_drift_correction, thres=100)
+
+# %% [markdown]
+# Visualize results
+
+# %%
+viewer = napari.Viewer()
+viewer.add_image(x)
+viewer.add_labels(tracks_drift_correction);
+
+# TODO visualize each track as line in corresponding color.
+
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# ## Optimal frame-by-frame matching ("Hungarian matching algorithm")
+
+# %% [markdown]
+# ### Exercise 1.4
+# <div class="alert alert-block alert-info"><h3>Exercise 1.4: Perform optimal frame-by-frame linking</h3>
+#
+# Set up the cost matrix such that you can use [`scipy.optimize.linear_sum_assignment`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.linear_sum_assignment.html) to solve the matching problem in the bipartite graph.
+#     
+# </div>
+
+# %%
+# TODO insert image for bipartite matching
+# TODO use exercise 2021
 
 # %% [markdown]
 # Load ground truth and compute a metric
@@ -317,11 +355,16 @@ viewer.add_labels(tracks);
 # %%
 # TODO given
 
-# %% [markdown]
-# Compute other features with scikit-image to play with cost function
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# ## Other suitable features for linking cost function
+
+# %%
+Compute other features with scikit-image to play with cost function
 
 # %% [markdown]
-# <div class="alert alert-block alert-info"><h3>Exercise 1.4: Explore different features for hungarian matching</h3>
+# ### Exercise 1.5
+#
+# <div class="alert alert-block alert-info"><h3>Exercise 1.5: Explore different features for hungarian matching</h3>
 #
 # Explore running the hungarian matching algorithm from above with different `scikit-image` region properties and inspect the results. 
 #     
