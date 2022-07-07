@@ -5,7 +5,7 @@ TODO
 
 ## Exercises:
 
-1) Tracking by detection and simple frame by frame matching
+1. Tracking by detection and simple frame by frame matching
 
     Here we will walk through all basic components of a tracking-by-detection algorithm.
     
@@ -24,13 +24,13 @@ TODO
     - to set up the two **LAP cost matrices** step by step and how to use a solver in python.
     - how to use **_Trackmate_**, a versatile ready-to-go implementation of LAP tracking in ImageJ.
 
-3. Advanced topics (and linear optimization)
+3. OPTIONAL: Advanced topics and linear optimization
 
     Here we will introduce more advanced formulations of tracking.
     
     You will learn
     - to set up a **network flow** using `networkx`, which allows to find a global optimum solution for small-scale problems, but without modeling cell divisions.
-    - (to formulate an **integer linear program (ILP)** to find a global optimum solution for small-scale tracking problems with `cvxopt`.)
+    - to formulate an **integer linear program (ILP)** to find a global optimum solution for small-scale tracking problems with `cvxopt`.
 
 ## Internal agenda: (will be removed)
 
