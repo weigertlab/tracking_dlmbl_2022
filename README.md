@@ -1,9 +1,13 @@
 # Exercise 8 - Tracking
+
+## Questions
+
+- Notebooks do not need a GPU. Can we ask participants to run locally (and thereby easily use napari for visus)?
+- Experience from last year: How much content?
+
 ## Setup
 
 TODO
-
-Notebooks do not need a GPU, can be run either on participants' laptops or in Google Colab. 
 
 ## Exercises:
 
