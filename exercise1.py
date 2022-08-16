@@ -23,14 +23,17 @@
 # You will learn
 # - to use a robust pretrained deep-learning-based **object detection** algorithm called _StarDist_ (Exercise 1.1).
 # - to implement a basic nearest-neighbor linking algorithm (Exercises 1.2 + 1.3).
-# - to compute the optimal frame-by-frame linking by setting up a bipartite graph matching problem ("Hungarian matching") and using a python-based solver (Exercise 1.4).
+# - to compute the optimal frame-by-frame linking by setting up a bipartite matching problem and using a python-based solver (Exercise 1.4).
 # - to **evaluate the output** of a tracking algorithm against a ground truth annotation.
 # - to compute suitable object **features** for the object linking process with `scikit-image` (Exercise 1.5).
 #
 # <!-- TODO link the learning points to the subsections of the notebook. -->
 
-# %%
-# TODO input output images to show the task
+# %% [raw]
+# # TODO input output gif to show the task on this dataset, using napari.
+
+# %% [markdown]
+# ![SegmentLocal](figures/trackmate-stardist-tracking.gif "segment")
 
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Install dependencies and import packages
@@ -47,10 +50,12 @@ from pathlib import Path
 import matplotlib
 import matplotlib.pyplot as plt
 # %matplotlib inline
-matplotlib.rcParams["image.interpolation"] = None
+matplotlib.rcParams["image.interpolation"] = "none"
 matplotlib.rcParams['figure.figsize'] = (14, 10)
 from tifffile import imread
-from tqdm import tqdm
+from tqdm.auto import tqdm
+import skimage
+import pandas as pd
 
 from stardist import fill_label_holes, random_label_cmap
 from stardist.plot import render_label
@@ -108,16 +113,22 @@ else:
 # %%
 x = np.stack([imread(xi) for xi in sorted((base_path / "images").glob("*.tif"))])
 y = np.stack([imread(yi) for yi in sorted((base_path / "gt_tracking").glob("*.tif"))])
+# links = np.loadtxt(base_path / "gt_tracking" / "man_track.txt", dtype=int)
+links = pd.read_csv(base_path / "gt_tracking" / "man_track.csv")
 assert len(x) == len(y)
 print(f"Number of images: {len(x)}")
 print(f"Image shape: {x[0].shape}")
+
+# %%
+# links
 
 # %% [markdown]
 # Crop the dataset in time and space to reduce runtime
 
 # %%
-x = x[:20, 300:, :]
-y = y[:20, 300:, :]
+# x = x[:20, 300:, :]
+# y = y[:20, 300:, :]
+# TODO crop links as well
 print(f"Number of images: {len(x)}")
 print(f"Image shape: {x[0].shape}")
 
@@ -138,8 +149,29 @@ plot_img_label(x[idx], y[idx])
 
 # %%
 viewer = napari.Viewer()
-viewer.add_image(x)
-viewer.add_labels(y);
+viewer.add_image(x, name="image")
+
+
+# %%
+def visualize_tracks(viewer, y, links):
+    """Utility function to visualize segmentation and tracks"""
+    tracks = []
+    for t, frame in enumerate(y):
+        centers = skimage.measure.regionprops(frame)
+        for c in centers:
+            tracks.append([c.label, t, int(c.centroid[0]), int(c.centroid[1])])
+    divisions = links[links[:,3] != 0]
+    graph = {}
+    for d in divisions:
+        graph[d[0]] = [d[3]]
+    viewer.add_labels(y, name="labels")
+    viewer.layers["labels"].contour = 3
+    viewer.add_tracks(tracks, name="tracks", graph=graph)
+    # TODO coloring by track ID not working.
+
+
+# %%
+visualize_tracks(viewer, y, links.to_numpy())
 
 # %% [markdown] tags=[]
 # ## Object detection using a pre-trained neural network
@@ -345,7 +377,7 @@ viewer.add_labels(tracks_drift_correction);
 # TODO visualize each track as line in corresponding color.
 
 # %% [markdown] tags=[]
-# ## Optimal frame-by-frame matching ("Hungarian matching algorithm")
+# ## Optimal frame-by-frame matching (*Assignment problem* or *Maximum weighted bipartite matching*)
 
 # %% [markdown] jp-MarkdownHeadingCollapsed=true tags=[]
 # ## Exercise 1.4
@@ -374,9 +406,9 @@ viewer.add_labels(tracks_drift_correction);
 # %% [markdown]
 # ## Exercise 1.5
 #
-# <div class="alert alert-block alert-info"><h3>Exercise 1.5: Explore different features for hungarian matching</h3>
+# <div class="alert alert-block alert-info"><h3>Exercise 1.5: Explore different features for assigment problem</h3>
 #
-# Explore running the hungarian matching algorithm from above with different `scikit-image` region properties and inspect the results. 
+# Explore solving the assignment problem from above with different `scikit-image` region properties and inspect the results. 
 #
 # Feel free to share tracking runs for which your features improved the results.
 #     
