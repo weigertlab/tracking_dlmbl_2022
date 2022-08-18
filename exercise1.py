@@ -64,15 +64,14 @@ from stardist.models import StarDist2D
 from stardist import _draw_polygons
 from csbdeep.utils import normalize
 
+# To interact with napari viewer from within a notebook
 import nest_asyncio
 nest_asyncio.apply()
 import napari
 
 lbl_cmap = random_label_cmap()
-
-
-# %% [markdown]
-# For pretty tqdm progress bars, run `jupyter nbextension enable --py widgetsnbextension` in the terminal.
+# Pretty tqdm progress bars 
+# ! jupyter nbextension enable --py widgetsnbextension
 
 # %% [markdown]
 # Some utility functions
@@ -140,7 +139,7 @@ print(f"Image shape: {x[0].shape}")
 x, y = preprocess(x, y)
 
 # %% [markdown]
-# Visualize some images
+# Visualize some images (by changing `idx`).
 
 # %%
 idx = 0
@@ -148,42 +147,57 @@ plot_img_label(x[idx], y[idx])
 
 # %% [markdown]
 # This is ok to take a glimpse, but a dynamic viewer would be much better. Let's use [napari](https://napari.org/tutorials/fundamentals/getting_started.html) for this.
-#
-# We can easily explore how the nuclei move over time and see that the ground truth annotations are consistent over time. If you zoom in, you will note that the annotations are not perfect segmentations, but rather circular objects placed roughly in the center of each nucleus.
 
 # %%
-try:
+viewer = napari.viewer.current_viewer()
+if viewer:
     viewer.close()
-except NameError:
-    pass
 viewer = napari.Viewer()
 viewer.add_image(x, name="image");
 
 
+# %% [markdown]
+# Let's add the ground truth annotations. Now we can easily explore how the cells move over time.
+#
+# If you zoom in, you will note that the dense annotations are not perfect segmentations, but rather circular objects placed roughly in the center of each nucleus.
+
 # %%
 def visualize_tracks(viewer, y, links):
     """Utility function to visualize segmentation and tracks"""
+    colorperm = np.random.default_rng(42).permutation(len(links))
     tracks = []
     for t, frame in enumerate(y):
         centers = skimage.measure.regionprops(frame)
         for c in centers:
-            tracks.append([c.label, t, int(c.centroid[0]), int(c.centroid[1])])
+            tracks.append([colorperm[c.label], t, int(c.centroid[0]), int(c.centroid[1])])
     tracks = np.array(tracks)
     tracks = tracks[tracks[:, 0].argsort()]
     divisions = links[links[:,3] != 0]
     graph = {}
     for d in divisions:
-        if d[0] not in tracks[:, 0] or d[3] not in tracks[:, 0]:
+        if colorperm[d[0]] not in tracks[:, 0] or colorperm[d[3]] not in tracks[:, 0]:
             continue
-        graph[d[0]] = [d[3]]
+        graph[colorperm[d[0]]] = [colorperm[d[3]]]
         
     viewer.add_labels(y, name="labels")
     viewer.layers["labels"].contour = 3
     viewer.add_tracks(tracks, name="tracks", graph=graph)
     return tracks
-    # TODO coloring by track ID not working.
 
-# This could also be an exercise to get familiar with how these things are stored.
+
+# %%
+visualize_tracks(viewer, y, links.to_numpy());
+
+
+# %% [markdown] jp-MarkdownHeadingCollapsed=true tags=[]
+# ## Exercise 1.1
+# <div class="alert alert-block alert-info"><h3>Exercise 1.1: Highlight the cell divisions</h3>
+#
+# The visualization of the ground truth tracks help our visual system to process this video, it is still hard see sparse events, e.g. the cell divisions. Given the dense annotations `y` and the track links `links`, write a function that highlights the pairs of daughter cells just after mitosis.
+#     
+# </div>
+
+# %%
 # TODO clean up
 def visualize_divisions(viewer, y, links):
     """Utility function to visualize divisions"""
@@ -200,19 +214,11 @@ def visualize_divisions(viewer, y, links):
         layer[v[0][1]] = (y[v[0][1]] == v[0][0]).astype(int) * v[0][0] + (y[v[0][1]] == v[1][0]).astype(int) * v[1][0]
     
     viewer.add_labels(layer, name="divisions")
+    return divisions
 
 
 # %%
-tracks = visualize_tracks(viewer, y, links.to_numpy())
-
-# %%
-tracks
-
-# %%
-tracks[tracks[:, 0].argsort()]
-
-# %%
-visualize_divisions(viewer, y, links.to_numpy())
+visualize_divisions(viewer, y, links.to_numpy());
 
 # %% [markdown] tags=[]
 # ## Object detection using a pre-trained neural network
@@ -253,8 +259,8 @@ plt.tight_layout()
 plt.show() 
 
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true tags=[] jp-MarkdownHeadingCollapsed=true
-# ## Exercise 1.1
-# <div class="alert alert-block alert-info"><h3>Exercise 1.1: Parameter exploration of detection</h3>
+# ## Exercise 1.2
+# <div class="alert alert-block alert-info"><h3>Exercise 1.2: Explore the parameters of cell detection</h3>
 #
 # Explore the following aspects of the detection algorithm:
 #     
@@ -295,10 +301,11 @@ plt.xticks(range(len(centers)))
 plt.show();
 
 
-# %% [markdown]
-# ## Checkpoint 1: We have good detections, now on to the linking.
-
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# ## Checkpoint 1
+# <div class="alert alert-block alert-success"><h3>Checkpoint 1: We have good detections, now on to the linking.</h3></div>
+
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true tags=[]
 # ## Greedy linking by nearest neighbor
 
 # %% [markdown] tags=[]
