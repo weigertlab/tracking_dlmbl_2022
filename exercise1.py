@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.14.0
+#       jupytext_version: 1.14.1
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -46,6 +46,7 @@
 # %%
 from urllib.request import urlretrieve
 from pathlib import Path
+from collections import defaultdict
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -69,6 +70,9 @@ import napari
 
 lbl_cmap = random_label_cmap()
 
+
+# %% [markdown]
+# For pretty tqdm progress bars, run `jupyter nbextension enable --py widgetsnbextension` in the terminal.
 
 # %% [markdown]
 # Some utility functions
@@ -99,6 +103,7 @@ def preprocess(X, Y, axis_norm=(0,1)):
 # Download the dataset
 
 # %%
+# TODO write .csv version of man_track to switchdrive
 base_path = Path("data/cancer_cell_migration")
 
 if base_path.exists():
@@ -113,22 +118,21 @@ else:
 # %%
 x = np.stack([imread(xi) for xi in sorted((base_path / "images").glob("*.tif"))])
 y = np.stack([imread(yi) for yi in sorted((base_path / "gt_tracking").glob("*.tif"))])
-# links = np.loadtxt(base_path / "gt_tracking" / "man_track.txt", dtype=int)
-links = pd.read_csv(base_path / "gt_tracking" / "man_track.csv")
 assert len(x) == len(y)
 print(f"Number of images: {len(x)}")
 print(f"Image shape: {x[0].shape}")
 
 # %%
-# links
+# links = np.loadtxt(base_path / "gt_tracking" / "man_track.txt", dtype=int)
+links = pd.read_csv(base_path / "gt_tracking" / "man_track.csv")
+links[:10]
 
 # %% [markdown]
 # Crop the dataset in time and space to reduce runtime
 
 # %%
-# x = x[:20, 300:, :]
-# y = y[:20, 300:, :]
-# TODO crop links as well
+x = x[:20, 300:, :]
+y = y[:20, 300:, :]
 print(f"Number of images: {len(x)}")
 print(f"Image shape: {x[0].shape}")
 
@@ -148,8 +152,12 @@ plot_img_label(x[idx], y[idx])
 # We can easily explore how the nuclei move over time and see that the ground truth annotations are consistent over time. If you zoom in, you will note that the annotations are not perfect segmentations, but rather circular objects placed roughly in the center of each nucleus.
 
 # %%
+try:
+    viewer.close()
+except NameError:
+    pass
 viewer = napari.Viewer()
-viewer.add_image(x, name="image")
+viewer.add_image(x, name="image");
 
 
 # %%
@@ -160,18 +168,51 @@ def visualize_tracks(viewer, y, links):
         centers = skimage.measure.regionprops(frame)
         for c in centers:
             tracks.append([c.label, t, int(c.centroid[0]), int(c.centroid[1])])
+    tracks = np.array(tracks)
+    tracks = tracks[tracks[:, 0].argsort()]
     divisions = links[links[:,3] != 0]
     graph = {}
     for d in divisions:
+        if d[0] not in tracks[:, 0] or d[3] not in tracks[:, 0]:
+            continue
         graph[d[0]] = [d[3]]
+        
     viewer.add_labels(y, name="labels")
     viewer.layers["labels"].contour = 3
     viewer.add_tracks(tracks, name="tracks", graph=graph)
+    return tracks
     # TODO coloring by track ID not working.
+
+# This could also be an exercise to get familiar with how these things are stored.
+# TODO clean up
+def visualize_divisions(viewer, y, links):
+    """Utility function to visualize divisions"""
+    divisions = links[links[:,3] != 0]
+    divisions_dict = defaultdict(list)
+    for d in divisions:
+        if d[0] not in y or d[3] not in y:
+            continue
+        divisions_dict[d[3]].append((d[0], d[1]))
+
+    layer = np.zeros_like(y)
+    for k, v in divisions_dict.items():
+        assert len(v) == 2
+        layer[v[0][1]] = (y[v[0][1]] == v[0][0]).astype(int) * v[0][0] + (y[v[0][1]] == v[1][0]).astype(int) * v[1][0]
+    
+    viewer.add_labels(layer, name="divisions")
 
 
 # %%
-visualize_tracks(viewer, y, links.to_numpy())
+tracks = visualize_tracks(viewer, y, links.to_numpy())
+
+# %%
+tracks
+
+# %%
+tracks[tracks[:, 0].argsort()]
+
+# %%
+visualize_divisions(viewer, y, links.to_numpy())
 
 # %% [markdown] tags=[]
 # ## Object detection using a pre-trained neural network
@@ -179,7 +220,7 @@ visualize_tracks(viewer, y, links.to_numpy())
 # %% [markdown] tags=[]
 # ### Load a pretrained stardist model, detect nuclei in one image and visualize them.
 #
-# TODO use the model pre-trained on this dataset instead of the general fluorescence nuclei model.
+# TODO use a model pre-trained on this dataset instead of the general fluorescence nuclei model.
 
 # %% tags=[]
 idx = 0
@@ -211,7 +252,7 @@ plt.imshow(x[idx], cmap='magma'); plt.axis('off')
 plt.tight_layout()
 plt.show() 
 
-# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Exercise 1.1
 # <div class="alert alert-block alert-info"><h3>Exercise 1.1: Parameter exploration of detection</h3>
 #
@@ -226,18 +267,22 @@ plt.show()
 # Detect centers and segment nuclei in all images of the time lapse.
 
 # %%
-pred = [model.predict_instances(xi, show_tile_progress=False, scale=(1,1))
+scale = (1,1)
+pred = [model.predict_instances(xi, show_tile_progress=False, scale=scale)
               for xi in tqdm(x)]
 detections = np.stack([xi[0] for xi in pred])
 centers = [xi[1]["points"] for xi in pred]
 
 # %% [markdown]
-# Visualize the unlinked dense detections
+# Visualize the dense detections. They are still not linked.
 
 # %%
-viewer = napari.Viewer()
-viewer.add_image(x)
-viewer.add_labels(detections);
+try:
+    viewer.add_labels(detections, name=f"detections_scale_{scale}");
+except NameError:
+    viewer = napari.Viewer()
+    viewer.add_image(x)
+    viewer.add_labels(detections, name=f"detections_scale_{scale}");
 
 # %% [markdown]
 # We see that the number of detections increases over time, corresponding to the cells that insert the field of view from below during the video.
@@ -245,8 +290,8 @@ viewer.add_labels(detections);
 # %%
 plt.figure(figsize=(10,6))
 plt.bar(range(len(centers)), [len(xi) for xi in centers])
-plt.title("Number of detections in each frame")
-# TODO clean up plot
+plt.title(f"Number of detections in each frame (scale={scale})")
+plt.xticks(range(len(centers)))
 plt.show();
 
 
@@ -290,7 +335,15 @@ plt.imshow(dist0);
 # %%
 from skimage.segmentation import relabel_sequential
 
-# TODO fix
+# TODO clean up/rewrite
+# TODO how would I want to represent tracks, throughout the exercises? You could leave the detections as is, and output a linking table, which could be applied to the detections to color them appropriately.
+# --> Don't worry about this now, standardize later.
+
+# The dict would have {t: {id: parent_id}}
+# for iterating, you would get back some
+
+# The tracks layer of napari would also need to be calculated for that.
+# The input format isn't too bad. I have tracklets represented dense, and linkings via
 
 # TODO introduce gaps in function to fill
 def nearest_neighbor_linking(detections, features, cost_function, thres=None):
@@ -330,17 +383,38 @@ def nearest_neighbor_linking(detections, features, cost_function, thres=None):
     return np.stack(tracks)
 
 # %%
-tracks = nearest_neighbor_linking(detections, centers, euclidian_distance, thres=100)
+tracklets = nearest_neighbor_linking(detections, centers, euclidian_distance, thres=100)
+
+
+# %%
+def visualize_tracklets(viewer, y):
+    """Utility function to visualize segmentation and tracks"""
+    tracks = []
+    for t, frame in enumerate(y):
+        centers = skimage.measure.regionprops(frame)
+        for c in centers:
+            tracks.append([c.label, t, int(c.centroid[0]), int(c.centroid[1])])
+    tracks = np.array(tracks)
+        
+    viewer.add_labels(y, name="detections")
+    viewer.layers["labels"].contour = 3
+    viewer.add_tracks(tracks, name="tracklets")
+    # TODO coloring by track ID not working.
+
+
 
 # %% [markdown]
 # Visualize results
 
 # %%
+try:
+    viewer.close()
+except NameError:
+    pass
 viewer = napari.Viewer()
 viewer.add_image(x)
-viewer.add_labels(tracks);
+visualize_tracklets(viewer, tracklets)
 
-# TODO visualize each track as line in corresponding color.
 
 # %% [markdown]
 # ## Checkpoint 2: We have a working basic tracking algorithm :)
@@ -370,6 +444,10 @@ tracks_drift_correction = nearest_neighbor_linking(detections, centers, euclidia
 # Visualize results
 
 # %%
+try:
+    viewer.close()
+except NameError:
+    pass
 viewer = napari.Viewer()
 viewer.add_image(x)
 viewer.add_labels(tracks_drift_correction);
