@@ -1,13 +1,9 @@
 # Exercise 8 - Tracking
 
-## Questions (will be removed)
-
-- Notebooks do not need a GPU. Can we ask participants to run locally (and thereby easily use napari for visus)?
-- Experience from last year: How much content?
-
 ## Setup
 
-TODO
+1. CPU-only environment: `env_cpu.yml`.
+1. Environment with GPU support: `env_gpu.yml`. TODO test on course virtual machines.
 
 ## Exercises
 
