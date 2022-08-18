@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.14.0
+#       jupytext_version: 1.14.1
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -101,6 +101,16 @@ from tqdm import tqdm
 # Run the LAP
 
 # %%
+# How would this be extended to the Jacquamard tracker?
+# You need tracklets (a class. The objects can be extracted from the dense tracklets), which are then used to calculate costs and set up the matching matrix.
+# There needs to be a nice function to calculate costs between tracklets, based on the tracklet class (similar to man_track.txt) and the dense tracklet annotations.
+# Cost for death: constant
+# Cost for new track: constant
+# Cost for merging beginning to existing tracklet (division) --> function
+# Cost for merging end to existing tracklet
+# Cost for gap closing: end 
+
+# This is a second step that can go on top of exercise 1.
 
 # %% [markdown]
 #
@@ -121,7 +131,8 @@ from tqdm import tqdm
 # </div>
 
 # %% [markdown]
-# ## Checkpoint: We have implemented an advanced linking algorithm in python :)
+# ## Checkpoint 3
+# <div class="alert alert-block alert-success"><h3>Checkpoint 3: We have implemented a fully-fledged tracking algorithm from scratch.</h3></div>
 
 # %% [markdown] tags=[]
 # ## Run the full linear assignment problem in Trackmate

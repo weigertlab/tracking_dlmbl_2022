@@ -44,9 +44,11 @@
 # # !pip install nest_asyncio
 
 # %%
+import sys
 from urllib.request import urlretrieve
 from pathlib import Path
 from collections import defaultdict
+from abc import ABC, abstractmethod
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -57,6 +59,7 @@ from tifffile import imread
 from tqdm.auto import tqdm
 import skimage
 import pandas as pd
+import scipy
 
 from stardist import fill_label_holes, random_label_cmap
 from stardist.plot import render_label
@@ -130,8 +133,10 @@ links[:10]
 # Crop the dataset in time and space to reduce runtime
 
 # %%
-x = x[:20, 300:, :]
-y = y[:20, 300:, :]
+# x = x[:20, 300:, :]
+# y = y[:20, 300:, :]
+x = x[:20, -256:, -256:]
+y = y[:20, -256:, -256:]
 print(f"Number of images: {len(x)}")
 print(f"Image shape: {x[0].shape}")
 
@@ -162,9 +167,9 @@ viewer.add_image(x, name="image");
 # If you zoom in, you will note that the dense annotations are not perfect segmentations, but rather circular objects placed roughly in the center of each nucleus.
 
 # %%
-def visualize_tracks(viewer, y, links):
+def visualize_tracks(viewer, y, links=None, name=""):
     """Utility function to visualize segmentation and tracks"""
-    colorperm = np.random.default_rng(42).permutation(len(links))
+    colorperm = np.random.default_rng(42).permutation((np.arange(1, np.max(y) + 2)))
     tracks = []
     for t, frame in enumerate(y):
         centers = skimage.measure.regionprops(frame)
@@ -172,21 +177,23 @@ def visualize_tracks(viewer, y, links):
             tracks.append([colorperm[c.label], t, int(c.centroid[0]), int(c.centroid[1])])
     tracks = np.array(tracks)
     tracks = tracks[tracks[:, 0].argsort()]
-    divisions = links[links[:,3] != 0]
+    
     graph = {}
-    for d in divisions:
-        if colorperm[d[0]] not in tracks[:, 0] or colorperm[d[3]] not in tracks[:, 0]:
-            continue
-        graph[colorperm[d[0]]] = [colorperm[d[3]]]
-        
-    viewer.add_labels(y, name="labels")
-    viewer.layers["labels"].contour = 3
-    viewer.add_tracks(tracks, name="tracks", graph=graph)
+    if links is not None:
+        divisions = links[links[:,3] != 0]
+        for d in divisions:
+            if colorperm[d[0]] not in tracks[:, 0] or colorperm[d[3]] not in tracks[:, 0]:
+                continue
+            graph[colorperm[d[0]]] = [colorperm[d[3]]]
+
+    viewer.add_labels(y, name=f"{name}_detections")
+    viewer.layers[f"{name}_detections"].contour = 3
+    viewer.add_tracks(tracks, name=f"{name}_tracks", graph=graph)
     return tracks
 
 
 # %%
-visualize_tracks(viewer, y, links.to_numpy());
+visualize_tracks(viewer, y, links.to_numpy(), "ground_truth");
 
 
 # %% [markdown] jp-MarkdownHeadingCollapsed=true tags=[]
@@ -196,9 +203,20 @@ visualize_tracks(viewer, y, links.to_numpy());
 # The visualization of the ground truth tracks help our visual system to process this video, it is still hard see sparse events, e.g. the cell divisions. Given the dense annotations `y` and the track links `links`, write a function that highlights the pairs of daughter cells just after mitosis.
 #     
 # </div>
+#
+# TODO add example image of output
 
 # %%
-# TODO clean up
+def visualize_divisions(viewer, y, links):
+    """Utility function to visualize divisions"""
+    ### YOUR CODE HERE ###
+    divisions = np.zeros_like(y)
+    viewer.add_labels(divisions, name="divisions")
+    pass
+
+
+# %%
+# Exercise 1.1 solution
 def visualize_divisions(viewer, y, links):
     """Utility function to visualize divisions"""
     divisions = links[links[:,3] != 0]
@@ -277,7 +295,7 @@ scale = (1,1)
 pred = [model.predict_instances(xi, show_tile_progress=False, scale=scale)
               for xi in tqdm(x)]
 detections = np.stack([xi[0] for xi in pred])
-centers = [xi[1]["points"] for xi in pred]
+# centers = [xi[1]["points"] for xi in pred]
 
 # %% [markdown]
 # Visualize the dense detections. They are still not linked.
@@ -312,26 +330,25 @@ plt.show();
 # Function to compute pairwise euclidian distance for detections in two adjacent frames.
 
 # %%
-def euclidian_distance(start_points, end_points):
-    # TODO vectorize
-    dists = []
-    for sp in start_points:
-        for ep in end_points:
-            dists.append(np.sqrt(((sp - ep)**2).sum()))
+# def euclidian_distance(start_points, end_points):
+#     # TODO vectorize
+#     dists = []
+#     for sp in start_points:
+#         for ep in end_points:
+#             dists.append(np.sqrt(((sp - ep)**2).sum()))
             
-    dists = np.array(dists).reshape(len(start_points), len(end_points))
-    return dists
-
+#     dists = np.array(dists).reshape(len(start_points), len(end_points))
+#     return dists
 
 # %%
-dist0 = euclidian_distance(centers[0], centers[1])
-plt.figure(figsize=(5,5))
-plt.title("Pairwise distance matrix")
-plt.imshow(dist0);
+# dist0 = euclidian_distance(centers[0], centers[1])
+# plt.figure(figsize=(5,5))
+# plt.title("Pairwise distance matrix")
+# plt.imshow(dist0);
 
 # %% [markdown] tags=[]
-# ## Exercise 1.2
-# <div class="alert alert-block alert-info"><h3>Exercise 1.2: Complete a basic thresholded nearest neighbor linking function</h3>
+# ## Exercise 1.3
+# <div class="alert alert-block alert-info"><h3>Exercise 1.3: Complete a basic thresholded nearest neighbor linking function</h3>
 #
 # Given a cost matrix for detections in a pair of frames, implement a neighest neighbor function:    
 # - For each detection in frame $t$, find the nearest neighbor in frame $t+1$. If the distance is below a threshold $\tau$, link the two objects.
@@ -340,91 +357,177 @@ plt.imshow(dist0);
 # </div>
 
 # %%
-from skimage.segmentation import relabel_sequential
+# TODO tracks into napari from consistently labelled dense outputs
+# OR keep using the man_track.txt format: I have tracklets represented dense, and linkings via man_track.txt
 
-# TODO clean up/rewrite
-# TODO how would I want to represent tracks, throughout the exercises? You could leave the detections as is, and output a linking table, which could be applied to the detections to color them appropriately.
-# --> Don't worry about this now, standardize later.
+class FrameByFrameLinker(ABC):
 
-# The dict would have {t: {id: parent_id}}
-# for iterating, you would get back some
-
-# The tracks layer of napari would also need to be calculated for that.
-# The input format isn't too bad. I have tracklets represented dense, and linkings via
-
-# TODO introduce gaps in function to fill
-def nearest_neighbor_linking(detections, features, cost_function, thres=None):
-    """Links the dense detections based on a cost function that takes features of two adjacent frames as input.
-    
-    TODO docstring
-    """
-    # TODO clean up
-    tracks = [detections[0]]
-    track_ids = list(range(detections[0].max()))  # starting at 0 here
-    n_tracks = detections[0].max()  # running index to assign new track numbers
-    for i in tqdm(range(len(detections) - 1)):
-        cost_matrix = cost_function(features[i], features[i+1])
-        argmin = np.argmin(cost_matrix, axis=1)
-        min_dist = np.take_along_axis(cost_matrix, np.expand_dims(argmin, 1), axis=1)
+    @abstractmethod
+    def linking_cost_function(self, detections0, detections1, image0=None, image1=None):
+        """TODO
         
-        linked = []
-        new_frame = np.copy(detections[i+1])
-        new_ids = np.zeros(len(range(new_frame.max())))
-        for i_in, (md, am) in enumerate(zip(min_dist, argmin)):
-            if not thres or md < thres:
-                new_frame[new_frame == am + 1] = track_ids[i_in] + 1  # +1 offset to account for background in dense
-                new_ids[am] = track_ids[i_in]
+        Args:
         
+            detections0: image with background 0 and detections 1, ..., m
+            detections1: image with backgruond 0 and detections 1, ..., n
+            image0 (optional): image corresponding to detections0
+            image1 (optional): image corresponding to detections1
+        """
+        pass
     
-        # Start new track for all non-linked tracks
-        for ni in range(len(new_ids)):
-            if new_ids[ni] == 0:
-                new_ids[ni] = n_tracks + 1
+    @abstractmethod
+    def _link_two_frames(self, cost_matrix):
+        """TODO
+
+        Args:
+
+            cost_matrix: m x n matrix
+
+        Returns:
+
+            binary m x n linking matrix
+
+
+        """
+        pass
+
+    @staticmethod
+    def relabel_detections(detections, linking_matrices):
+        """TODO"""
+        # TODO fix
+        assert len(detections) - 1 == len(linking_matrices)
+        out = [skimage.segmentation.relabel_sequential(detections[0])[0]]
+        n_tracks = out[0].max()
+        lookup_tables = [{i: i for i in range(1, out[0].max() + 1)}]
+
+        for i in tqdm(range(len(linking_matrices))):
+            # old_frame = np.copy(skimage.segmentation.relabel_sequential(detections[i])[0])
+            new_frame = np.copy(skimage.segmentation.relabel_sequential(detections[i+1])[0])
+            
+            lut = {}
+            for idx_from, idx_to in zip(linking_matrices[i][0], linking_matrices[i][1]):
+                # Copy over ID
+                new_frame[new_frame == idx_to] = lookup_tables[i][idx_from]
+                lut[idx_to] = lookup_tables[i][idx_from]
+
+
+            # Start new track for all non-linked tracks
+            new_ids = set(range(1, new_frame.max() + 1)) / set(linking_matrices[i][1])
+            new_ids = list(new_ids)
+                          
+            for ni in new_ids:
                 n_tracks += 1
-        
-        # print(f"Number of total tracks: {n_tracks}")
-        track_ids = new_ids          
-        tracks.append(new_frame)
+                lut[ni] = n_tracks
+                new_frame[new_frame == ni] = n_tracks
+            lookup_tables.append(lut)
+            out.append(new_frame)
+                
+        return out
+
+
+    def link(self, detections, images=None):
+        """TODO"""
+        if images is not None:
+            assert len(images) == len(detections)
+        else:
+            images = [None] * len(detections)
+
+        linking_matrices = []
+        for i in tqdm(range(len(images) - 1)):
+            detections0, _, _ = skimage.segmentation.relabel_sequential(detections[i])
+            detections1, _, _ = skimage.segmentation.relabel_sequential(detections[i+1])
+            cost_matrix = self.linking_cost_function(detections0, detections1, images[i], images[i+1])
+            links = self._link_two_frames(cost_matrix)
+            linking_matrices.append(links)
+            
+        return linking_matrices
+
+
+# %%
+class NearestNeighborLinkerEuclidian(FrameByFrameLinker):
+    def __init__(self, threshold=sys.float_info.max, *args, **kwargs):
+        self.threshold = threshold
+        super().__init__(*args, **kwargs)
     
-        # TODO output for napari tracks layers
-    return np.stack(tracks)
-
-# %%
-tracklets = nearest_neighbor_linking(detections, centers, euclidian_distance, thres=100)
-
-
-# %%
-def visualize_tracklets(viewer, y):
-    """Utility function to visualize segmentation and tracks"""
-    tracks = []
-    for t, frame in enumerate(y):
-        centers = skimage.measure.regionprops(frame)
-        for c in centers:
-            tracks.append([c.label, t, int(c.centroid[0]), int(c.centroid[1])])
-    tracks = np.array(tracks)
+    def linking_cost_function(self, detections0, detections1, image0=None, image1=None):
+        regions0 = skimage.measure.regionprops(detections0)
+        centroids0 = [np.array(r.centroid) for r in regions0]
         
-    viewer.add_labels(y, name="detections")
-    viewer.layers["labels"].contour = 3
-    viewer.add_tracks(tracks, name="tracklets")
-    # TODO coloring by track ID not working.
+        regions1 = skimage.measure.regionprops(detections1)
+        centroids1 = [np.array(r.centroid) for r in regions1]
+        
+        # TODO vectorize
+        dists = []
+        for c0 in centroids0:
+            for c1 in centroids1:
+                dists.append(np.sqrt(((c0 - c1)**2).sum()))
+
+        dists = np.array(dists).reshape(len(centroids0), len(centroids1))
+        return dists
+    
+    def _link_two_frames(self, cost_matrix):
+        """Nearest neighbor linking
+
+        Args:
+        
+            cost_matrix: m x n matrix with pairwise linking costs > 0 
+
+        Returns:
+
+            binary m x n linking matrix
 
 
+        """
+        cost_matrix = cost_matrix.copy().astype(float)
+        assert np.all(cost_matrix > 0)
+        cost_matrix[cost_matrix > self.threshold] = self.threshold
+        
+        idx_from = np.arange(cost_matrix.shape[0])
+        idx_to = cost_matrix.argmin(axis=1)
+        link = cost_matrix.min(axis=1) != self.threshold
+        
+        # TODO avoid linking things twice with bidirectional linking --> This can be another exercise?
+        
+        idx_from = idx_from[link]
+        idx_to = idx_to[link]
+        
+        # Account for +1 offset of the dense labels
+        idx_from += 1
+        idx_to += 1
+        
+        return idx_from, idx_to
+    
+        # links = np.zeros_like(cost_matrix, dtype=bool)
+        # links[idx_from, idx_to] = True 
+        # return links
+
+
+# %%
+Linker = NearestNeighborLinkerEuclidian(threshold=30)
+linking_matrices = Linker.link(detections)
+linked_detections = FrameByFrameLinker.relabel_detections(detections, linking_matrices)
+
+# %%
+
+# %%
+viewer.close()
 
 # %% [markdown]
 # Visualize results
 
 # %%
-try:
-    viewer.close()
-except NameError:
-    pass
+# try:
+#     viewer.close()
+# except NameError:
+#     pass
 viewer = napari.Viewer()
 viewer.add_image(x)
-visualize_tracklets(viewer, tracklets)
-
+viewer.add_labels(linked_detections)
+# visualize_tracks(viewer, linked_detections, name="NN")
 
 # %% [markdown]
-# ## Checkpoint 2: We have a working basic tracking algorithm :)
+# ## Checkpoint 2
+# <div class="alert alert-block alert-success"><h3>Checkpoint 2: We have a working basic tracking algorithm :).</h3></div>
 
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Exercise 1.3
@@ -435,6 +538,11 @@ visualize_tracklets(viewer, tracklets)
 # </div>
 
 # %%
+class NearestNeighborLinkerDriftCorrection(NearestNeighborLinkerEuclidian):
+    def __init__(self, drift, *args, **kwargs):
+        self.drift = drift
+        super().__init__(
+
 def euclidian_distance_drift_correction(start_points, end_points, drift=0):
     """ 
     
@@ -462,7 +570,7 @@ viewer.add_labels(tracks_drift_correction);
 # TODO visualize each track as line in corresponding color.
 
 # %% [markdown] tags=[]
-# ## Optimal frame-by-frame matching (*Assignment problem* or *Maximum weighted bipartite matching*)
+# ## Optimal frame-by-frame matching (*Assignment problem* or *Weighted bipartite matching*)
 
 # %% [markdown] jp-MarkdownHeadingCollapsed=true tags=[]
 # ## Exercise 1.4
@@ -474,7 +582,12 @@ viewer.add_labels(tracks_drift_correction);
 
 # %%
 # TODO insert image for bipartite matching
-# TODO use exercise 2021
+
+# %%
+# def minimum_weighted_bipartite_matching(self, cost_matrix):
+    #     """TODO"""
+    #     row_ind, col_ind = scipy.optimize.linear_sum_assignment(cost_matrix)
+    #     return np.zeros_like(cost_matrix)
 
 # %% [markdown]
 # Load ground truth and compute a metric
