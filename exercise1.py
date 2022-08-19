@@ -375,14 +375,49 @@ plt.show();
 # </div>
 
 # %%
-# TODO tracks into napari from consistently labelled dense outputs
-# OR keep using the man_track.txt format: I have tracklets represented dense, and linkings via man_track.txt
-
 class FrameByFrameLinker(ABC):
+    """Abstract base class for linking detections by considering pairs of adjacent frames."""
+    
+    def link(self, detections, images=None):
+        """Links detections in t frames.
+        
+        Args:
+        
+            detections:
+            
+                List of t numpy arrays of shape (x,y) with contiguous label ids. Background = 0.
+                
+            images (optional):
+            
+                List of t numpy arrays of shape (x,y).
+        
+        Returns:
+        
+            list of linking tuple lists [(ids_frame_0, ids_frame_1), (ids_frame_1, ids_frame_2), ... ]
+        """
+        if images is not None:
+            assert len(images) == len(detections)
+        else:
+            images = [None] * len(detections)
+
+        links = []
+        for i in tqdm(range(len(images) - 1), desc="Linking"):
+            detections0 = detections[i]
+            detections1 = detections[i+1]
+            self._assert_relabeled(detections0)
+            self._assert_relabeled(detections1)
+            
+            cost_matrix = self.linking_cost_function(detections0, detections1, images[i], images[i+1])
+            li = self._link_two_frames(cost_matrix)
+            links.append(li)
+            
+        return links
 
     @abstractmethod
     def linking_cost_function(self, detections0, detections1, image0=None, image1=None):
-        """TODO calculate unary features and extract pairwise costs.
+        """Calculate unary features and extract pairwise costs.
+        
+        To be overwritten in subclass.
         
         Args:
         
@@ -390,12 +425,18 @@ class FrameByFrameLinker(ABC):
             detections1: image with backgruond 0 and detections 1, ..., n
             image0 (optional): image corresponding to detections0
             image1 (optional): image corresponding to detections1
+            
+        Returns:
+        
+            m x n cost matrix 
         """
         pass
     
     @abstractmethod
     def _link_two_frames(self, cost_matrix):
-        """TODO
+        """Link two frames.
+        
+        To be overwritten in subclass.
 
         Args:
 
@@ -403,33 +444,44 @@ class FrameByFrameLinker(ABC):
 
         Returns:
 
-            binary m x n linking matrix
-
-
+            Tuple of lists (ids frame t, ids frame t+1).
         """
         pass
 
-    def relabel_detections(self, detections, linking_matrices):
-        """TODO"""
-        assert len(detections) - 1 == len(linking_matrices)
+    def relabel_detections(self, detections, links):
+        """Relabel dense detections according to computed links.
+        
+        # TODO slower in later iterations?
+        Args:
+        
+            detections: 
+                 
+                 List of t numpy arrays of shape (x,y) with contiguous label ids. Background = 0.
+                 
+            links:
+            
+                
+ 
+        """
+        assert len(detections) - 1 == len(links)
         self._assert_relabeled(detections[0])
         out = [detections[0]]
         n_tracks = out[0].max()
         lookup_tables = [{i: i for i in range(1, out[0].max() + 1)}]
 
-        for i in tqdm(range(len(linking_matrices))):
+        for i in tqdm(range(len(links)), desc="Recoloring detections"):
             new_frame = detections[i+1].copy()
             self._assert_relabeled(new_frame)
             
             lut = {}
-            for idx_from, idx_to in zip(linking_matrices[i][0], linking_matrices[i][1]):
+            for idx_from, idx_to in zip(links[i][0], links[i][1]):
                 # Copy over ID
                 new_frame[detections[i+1] == idx_to] = lookup_tables[i][idx_from]
                 lut[idx_to] = lookup_tables[i][idx_from]
 
 
             # Start new track for all non-linked tracks
-            new_ids = set(range(1, new_frame.max() + 1)) - set(linking_matrices[i][1])
+            new_ids = set(range(1, new_frame.max() + 1)) - set(links[i][1])
             new_ids = list(new_ids)
                           
             for ni in new_ids:
@@ -443,7 +495,6 @@ class FrameByFrameLinker(ABC):
         return np.stack(out)
 
     def _assert_relabeled(self, x):
-        """TODO"""
         if x.min() < 0:
             raise ValueError("Negative ID in detections.")
         if x.min() == 0:
@@ -453,34 +504,27 @@ class FrameByFrameLinker(ABC):
         if n != len(np.unique(x)):
             raise ValueError("Detection IDs are not contiguous.")
 
-    def link(self, detections, images=None):
-        """TODO"""
-        if images is not None:
-            assert len(images) == len(detections)
-        else:
-            images = [None] * len(detections)
-
-        linking_matrices = []
-        for i in tqdm(range(len(images) - 1)):
-            detections0 = detections[i]
-            detections1 = detections[i+1]
-            self._assert_relabeled(detections0)
-            self._assert_relabeled(detections1)
-            
-            cost_matrix = self.linking_cost_function(detections0, detections1, images[i], images[i+1])
-            links = self._link_two_frames(cost_matrix)
-            linking_matrices.append(links)
-            
-        return linking_matrices
-
 
 # %%
 class NearestNeighborLinkerEuclidian(FrameByFrameLinker):
+    """TODO make gaps for exercises"""
+    
     def __init__(self, threshold=sys.float_info.max, *args, **kwargs):
         self.threshold = threshold
         super().__init__(*args, **kwargs)
     
     def linking_cost_function(self, detections0, detections1, image0=None, image1=None):
+        """ Get centroids from detections and compute pairwise euclidian distances.
+                
+        Args:
+        
+            detections0: image with background 0 and detections 1, ..., m
+            detections1: image with backgruond 0 and detections 1, ..., n
+            
+        Returns:
+        
+            m x n cost matrix 
+        """
         # regionprops regions are sorted by label
         regions0 = skimage.measure.regionprops(detections0)
         centroids0 = [np.array(r.centroid) for r in regions0]
@@ -495,20 +539,19 @@ class NearestNeighborLinkerEuclidian(FrameByFrameLinker):
                 dists.append(np.sqrt(((c0 - c1)**2).sum()))
 
         dists = np.array(dists).reshape(len(centroids0), len(centroids1))
+        
         return dists
     
     def _link_two_frames(self, cost_matrix):
-        """Nearest neighbor linking
+        """Unidirectional nearest neighbor linking.
 
         Args:
         
-            cost_matrix: m x n matrix with pairwise linking costs > 0 
+            cost_matrix: m x n matrix with pairwise linking costs >= 0. 
 
         Returns:
 
-            binary m x n linking matrix
-
-
+            Tuple of lists (ids frame t, ids frame t+1).
         """
         cost_matrix = cost_matrix.copy().astype(float)
         assert np.all(cost_matrix >= 0)
@@ -519,9 +562,7 @@ class NearestNeighborLinkerEuclidian(FrameByFrameLinker):
         idx_to = cost_matrix.argmin(axis=1)
         link = cost_matrix.min(axis=1) != self.threshold
         
-        # TODO avoid linking things twice with bidirectional linking --> This can be another exercise?
-        
-        
+        # TODO ? Avoid linking things twice with bidirectional linking --> This can be another exercise?
         
         idx_from = idx_from[link]
         idx_to = idx_to[link]
@@ -531,22 +572,12 @@ class NearestNeighborLinkerEuclidian(FrameByFrameLinker):
         idx_to += 1
         
         return idx_from, idx_to
-    
-        # links = np.zeros_like(cost_matrix, dtype=bool)
-        # links[idx_from, idx_to] = True 
-        # return links
+
 
 # %%
-Linker = NearestNeighborLinkerEuclidian(threshold=30)
-linking_matrices = Linker.link(detections)
-linked_detections = Linker.relabel_detections(detections, linking_matrices)
-
-# %%
-try:
-    viewer.close()
-except NameError:
-    pass
-viewer = napari.Viewer()
+nn_linker = NearestNeighborLinkerEuclidian(threshold=30)
+nn_links = nn_linker.link(detections)
+nn_tracks = nn_linker.relabel_detections(detections, nn_links)
 
 # %% [markdown]
 # Visualize results
@@ -559,8 +590,8 @@ except NameError:
 viewer = napari.Viewer()
 viewer.add_image(x)
 viewer.add_labels(detections)
-viewer.add_labels(linked_detections)
-# visualize_tracks(viewer, linked_detections, name="NN")
+visualize_tracks(viewer, nn_tracks, name="nn");
+
 
 # %% [markdown]
 # ## Checkpoint 2
@@ -576,21 +607,51 @@ viewer.add_labels(linked_detections)
 
 # %%
 class NearestNeighborLinkerDriftCorrection(NearestNeighborLinkerEuclidian):
-    def __init__(self, drift, *args, **kwargs):
-        self.drift = drift
-        super().__init__(
-
-def euclidian_distance_drift_correction(start_points, end_points, drift=0):
-    """ 
+    """.
     
+    Args:
+        
+        drift: tuple of (x,y) drift correction per frame.
     """
-    # Insert your solution here
     
-    return dists
+    def __init__(self, drift, *args, **kwargs):
+        self.drift = np.array(drift)
+        super().__init__(*args, **kwargs)
+        
+    def linking_cost_function(self, detections0, detections1, image0=None, image1=None):
+        """ Get centroids from detections and compute pairwise euclidian distances with drift correction.
+                
+        Args:
+        
+            detections0: image with background 0 and detections 1, ..., m
+            detections1: image with backgruond 0 and detections 1, ..., n
+            
+        Returns:
+        
+            m x n cost matrix 
+        """
+        # regionprops regions are sorted by label
+        regions0 = skimage.measure.regionprops(detections0)
+        centroids0 = [np.array(r.centroid) for r in regions0]
+        
+        regions1 = skimage.measure.regionprops(detections1)
+        centroids1 = [np.array(r.centroid) for r in regions1]
+        
+        # TODO vectorize
+        dists = []
+        for c0 in centroids0:
+            for c1 in centroids1:
+                dists.append(np.sqrt(((c0 + self.drift - c1)**2).sum()))
+
+        dists = np.array(dists).reshape(len(centroids0), len(centroids1))
+        
+        return dists
 
 
 # %%
-tracks_drift_correction = nearest_neighbor_linking(detections, centers, euclidian_distance_drift_correction, thres=100)
+drift_linker = NearestNeighborLinkerDriftCorrection(threshold=30, drift=(0, -10))
+drift_links = drift_linker.link(detections)
+drift_tracks = drift_linker.relabel_detections(detections, drift_links)
 
 # %% [markdown]
 # Visualize results
@@ -602,12 +663,11 @@ except NameError:
     pass
 viewer = napari.Viewer()
 viewer.add_image(x)
-viewer.add_labels(tracks_drift_correction);
+visualize_tracks(viewer, drift_tracks, name="drift");
 
-# TODO visualize each track as line in corresponding color.
 
 # %% [markdown] tags=[]
-# ## Optimal frame-by-frame matching (*Assignment problem* or *Weighted bipartite matching*)
+# ## Optimal frame-by-frame matching (*Linear assignment problem* or *Weighted bipartite matching*)
 
 # %% [markdown] jp-MarkdownHeadingCollapsed=true tags=[]
 # ## Exercise 1.4
@@ -617,36 +677,185 @@ viewer.add_labels(tracks_drift_correction);
 #     
 # </div>
 
-# %%
-# TODO insert image for bipartite matching
+# %% [markdown]
+# ### TODO insert image for bipartite matching
+# ### TODO insert image from Jaqaman et al.
+#
+# Jaqaman, Khuloud, et al. "Robust single-particle tracking in live-cell time-lapse sequences." Nature Methods (2008)
 
 # %%
-# def minimum_weighted_bipartite_matching(self, cost_matrix):
-    #     """TODO"""
-    #     row_ind, col_ind = scipy.optimize.linear_sum_assignment(cost_matrix)
-    #     return np.zeros_like(cost_matrix)
+class BipartiteMatchingLinker(FrameByFrameLinker):
+    """TODO make gaps for exercises"""
+    
+    def __init__(self, threshold=sys.float_info.max, *args, **kwargs):
+        self.threshold = threshold
+        super().__init__(*args, **kwargs)
+    
+    def linking_cost_function(self, detections0, detections1, image0=None, image1=None):
+        """ Get centroids from detections and compute pairwise euclidian distances.
+                
+        Args:
+        
+            detections0: image with background 0 and detections 1, ..., m
+            detections1: image with backgruond 0 and detections 1, ..., n
+            
+        Returns:
+        
+            m x n cost matrix 
+        """
+        # regionprops regions are sorted by label
+        regions0 = skimage.measure.regionprops(detections0)
+        centroids0 = [np.array(r.centroid) for r in regions0]
+        
+        regions1 = skimage.measure.regionprops(detections1)
+        centroids1 = [np.array(r.centroid) for r in regions1]
+        
+        # TODO vectorize
+        dists = []
+        for c0 in centroids0:
+            for c1 in centroids1:
+                dists.append(np.sqrt(((c0 - c1)**2).sum()))
+
+        dists = np.array(dists).reshape(len(centroids0), len(centroids1))
+        
+        return dists
+    
+#     def _link_two_frames(self, cost_matrix):
+#         """Weighted bipartite matching with rectangular matrix.
+
+#         Args:
+        
+#             cost_matrix: m x n matrix with pairwise linking costs.
+
+#         Returns:
+
+#             Tuple of lists (ids frame t, ids frame t+1).
+#         """
+#         cost_matrix = cost_matrix.copy().astype(float)
+#         cost_matrix[cost_matrix > self.threshold] = sys.float_info.max
+
+#         idx_from, idx_to = scipy.optimize.linear_sum_assignment(cost_matrix)
+        
+#         # Account for +1 offset of the dense labels
+#         idx_from += 1
+#         idx_to += 1
+        
+#         return idx_from, idx_to
+    
+    def _link_two_frames(self, cost_matrix):
+        """Weighted bipartite matching with square matrix from Jaqaman et al (2008).
+
+        Args:
+        
+            cost_matrix: m x n matrix with pairwise linking costs.
+
+        Returns:
+
+            Tuple of lists (ids frame t, ids frame t+1).
+        """
+        cost_matrix = cost_matrix.copy().astype(float)
+        # print(f"{cost_matrix=}")
+        b = d = 1.05 * cost_matrix.max()
+        no_link = 1000
+        # print(f"{b=}")
+        cost_matrix[cost_matrix > self.threshold] = no_link
+        lower_right = cost_matrix.transpose()
+
+        deaths = np.full(shape=(cost_matrix.shape[0], cost_matrix.shape[0]), fill_value=no_link) + (np.eye(cost_matrix.shape[0]) * (d - no_link))
+        births = np.full(shape=(cost_matrix.shape[1], cost_matrix.shape[1]), fill_value=no_link) + (np.eye(cost_matrix.shape[1]) * (b - no_link))
+        
+        square_cost_matrix = np.block([
+            [cost_matrix, deaths],
+            [births, lower_right],
+        ])
+        # print(f"{square_cost_matrix=}")
+        row_ind, col_ind = scipy.optimize.linear_sum_assignment(square_cost_matrix)
+        # print(f"{row_ind=}")
+        # print(f"{col_ind=}")
+        
+        idx_from = []
+        idx_to = []
+        
+        # Only return links
+        for row, col in zip(row_ind, col_ind):
+            if row < cost_matrix.shape[0] and col < cost_matrix.shape[1]:
+                idx_from.append(row)
+                idx_to.append(col)
+    
+        # Account for +1 offset of the dense labels
+        idx_from = np.array(idx_from) + 1
+        idx_to = np.array(idx_to) + 1
+        
+        return idx_from, idx_to
+
+
+# %%
+bm_linker = BipartiteMatchingLinker()
+bm_links = bm_linker.link(detections)
+bm_tracks = bm_linker.relabel_detections(detections, bm_links)
+
+# %%
+# bm_links
+
+# %%
+try:
+    viewer.close()
+except NameError:
+    pass
+viewer = napari.Viewer()
+viewer.add_image(x)
+visualize_tracks(viewer, bm_tracks, name="bm");
+
 
 # %% [markdown]
-# Load ground truth and compute a metric
+# ### Load ground truth and compute a metric
 
 # %%
-# TODO given
+# TODO look for library functions.
 
 # %% [markdown] tags=[]
 # ## Other suitable features for linking cost function
-
-# %% [markdown]
-# Compute other features with scikit-image to play with cost function
 
 # %% [markdown]
 # ## Exercise 1.5
 #
 # <div class="alert alert-block alert-info"><h3>Exercise 1.5: Explore different features for assigment problem</h3>
 #
-# Explore solving the assignment problem from above with different `scikit-image` region properties and inspect the results. 
+# Explore solving the assignment problem based different features and cost functions.
+# For example:
+# - Different region properties (`skimage.measure.regionprops`).
+# - Extract texture features from the images, e.g. mean intensity for each detection.
+# - Pairwise *Intersection over Union (IoU)* detection.
+# - ...
 #
-# Feel free to share tracking runs for which your features improved the results.
-#     
+# Feel free to share tracking runs for which your features improved the results.    
 # </div>
 
 # %%
+class YourLinker(BipartiteMatchingLinker):
+    
+    def __init__(self, *args, **kwargs):
+        self.threshold = threshold
+        super().__init__(*args, **kwargs)
+    
+    def linking_cost_function(self, detections0, detections1, image0=None, image1=None):
+        """ A very smart cost function for frame-by-frame linking.
+                
+        Args:
+        
+            detections0: image with background 0 and detections 1, ..., m
+            detections1: image with backgruond 0 and detections 1, ..., n
+            image0 (optional): image corresponding to detections0
+            image1 (optional): image corresponding to detections1
+            
+        Returns:
+        
+            m x n cost matrix 
+        """
+        return np.zeros(detections0.max(), detections1.max())    
+
+
+# %%
+your_linker = YourLinker()
+your_links = your_linker.link(detections)
+your_tracks = your_linker.relabel_detections(detections, your_links)
