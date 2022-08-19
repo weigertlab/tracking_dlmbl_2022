@@ -133,10 +133,10 @@ links[:10]
 # Crop the dataset in time and space to reduce runtime
 
 # %%
-# x = x[:20, 300:, :]
-# y = y[:20, 300:, :]
-x = x[:20, -256:, -256:]
-y = y[:20, -256:, -256:]
+x = x[:20, 300:, :]
+y = y[:20, 300:, :]
+# x = x[:5, -64:, -64:]
+# y = y[:5, -64:, -64:]
 print(f"Number of images: {len(x)}")
 print(f"Image shape: {x[0].shape}")
 
@@ -162,6 +162,22 @@ viewer.add_image(x, name="image");
 
 
 # %% [markdown]
+# <div class="alert alert-block alert-danger"><h3>Important note for programming and debugging</h3>
+# Napari from within a jupyter notebook is nice, but seems to have a slight drawback:
+#
+# Whenever python throws an error, we need to run the following snippet to restore proper asynchronous execution.
+#     
+# TODO look into this!
+# </div>
+#
+# ```python
+# viewer = napari.viewer.current_viewer()
+# if viewer:
+#     viewer.close()
+# viewer = napari.Viewer()
+# ```
+
+# %% [markdown]
 # Let's add the ground truth annotations. Now we can easily explore how the cells move over time.
 #
 # If you zoom in, you will note that the dense annotations are not perfect segmentations, but rather circular objects placed roughly in the center of each nucleus.
@@ -169,7 +185,8 @@ viewer.add_image(x, name="image");
 # %%
 def visualize_tracks(viewer, y, links=None, name=""):
     """Utility function to visualize segmentation and tracks"""
-    colorperm = np.random.default_rng(42).permutation((np.arange(1, np.max(y) + 2)))
+    max_label = links.max() if links is not None else y.max()
+    colorperm = np.random.default_rng(42).permutation((np.arange(1, max_label + 2)))
     tracks = []
     for t, frame in enumerate(y):
         centers = skimage.measure.regionprops(frame)
@@ -294,8 +311,9 @@ plt.show()
 scale = (1,1)
 pred = [model.predict_instances(xi, show_tile_progress=False, scale=scale)
               for xi in tqdm(x)]
-detections = np.stack([xi[0] for xi in pred])
-# centers = [xi[1]["points"] for xi in pred]
+detections = [xi[0] for xi in pred]
+detections = np.stack([skimage.segmentation.relabel_sequential(d)[0] for d in detections])  # ensure that label ids are contiguous and start at 1 for each frame 
+centers = [xi[1]["points"] for xi in pred]
 
 # %% [markdown]
 # Visualize the dense detections. They are still not linked.
@@ -364,7 +382,7 @@ class FrameByFrameLinker(ABC):
 
     @abstractmethod
     def linking_cost_function(self, detections0, detections1, image0=None, image1=None):
-        """TODO
+        """TODO calculate unary features and extract pairwise costs.
         
         Args:
         
@@ -391,39 +409,49 @@ class FrameByFrameLinker(ABC):
         """
         pass
 
-    @staticmethod
-    def relabel_detections(detections, linking_matrices):
+    def relabel_detections(self, detections, linking_matrices):
         """TODO"""
-        # TODO fix
         assert len(detections) - 1 == len(linking_matrices)
-        out = [skimage.segmentation.relabel_sequential(detections[0])[0]]
+        self._assert_relabeled(detections[0])
+        out = [detections[0]]
         n_tracks = out[0].max()
         lookup_tables = [{i: i for i in range(1, out[0].max() + 1)}]
 
         for i in tqdm(range(len(linking_matrices))):
-            # old_frame = np.copy(skimage.segmentation.relabel_sequential(detections[i])[0])
-            new_frame = np.copy(skimage.segmentation.relabel_sequential(detections[i+1])[0])
+            new_frame = detections[i+1].copy()
+            self._assert_relabeled(new_frame)
             
             lut = {}
             for idx_from, idx_to in zip(linking_matrices[i][0], linking_matrices[i][1]):
                 # Copy over ID
-                new_frame[new_frame == idx_to] = lookup_tables[i][idx_from]
+                new_frame[detections[i+1] == idx_to] = lookup_tables[i][idx_from]
                 lut[idx_to] = lookup_tables[i][idx_from]
 
 
             # Start new track for all non-linked tracks
-            new_ids = set(range(1, new_frame.max() + 1)) / set(linking_matrices[i][1])
+            new_ids = set(range(1, new_frame.max() + 1)) - set(linking_matrices[i][1])
             new_ids = list(new_ids)
                           
             for ni in new_ids:
                 n_tracks += 1
                 lut[ni] = n_tracks
-                new_frame[new_frame == ni] = n_tracks
+                new_frame[detections[i+1] == ni] = n_tracks
+            # print(lut)
             lookup_tables.append(lut)
             out.append(new_frame)
                 
-        return out
+        return np.stack(out)
 
+    def _assert_relabeled(self, x):
+        """TODO"""
+        if x.min() < 0:
+            raise ValueError("Negative ID in detections.")
+        if x.min() == 0:
+            n = x.max() + 1
+        else:
+            n = x.max()
+        if n != len(np.unique(x)):
+            raise ValueError("Detection IDs are not contiguous.")
 
     def link(self, detections, images=None):
         """TODO"""
@@ -434,8 +462,11 @@ class FrameByFrameLinker(ABC):
 
         linking_matrices = []
         for i in tqdm(range(len(images) - 1)):
-            detections0, _, _ = skimage.segmentation.relabel_sequential(detections[i])
-            detections1, _, _ = skimage.segmentation.relabel_sequential(detections[i+1])
+            detections0 = detections[i]
+            detections1 = detections[i+1]
+            self._assert_relabeled(detections0)
+            self._assert_relabeled(detections1)
+            
             cost_matrix = self.linking_cost_function(detections0, detections1, images[i], images[i+1])
             links = self._link_two_frames(cost_matrix)
             linking_matrices.append(links)
@@ -450,6 +481,7 @@ class NearestNeighborLinkerEuclidian(FrameByFrameLinker):
         super().__init__(*args, **kwargs)
     
     def linking_cost_function(self, detections0, detections1, image0=None, image1=None):
+        # regionprops regions are sorted by label
         regions0 = skimage.measure.regionprops(detections0)
         centroids0 = [np.array(r.centroid) for r in regions0]
         
@@ -479,14 +511,17 @@ class NearestNeighborLinkerEuclidian(FrameByFrameLinker):
 
         """
         cost_matrix = cost_matrix.copy().astype(float)
-        assert np.all(cost_matrix > 0)
+        assert np.all(cost_matrix >= 0)
         cost_matrix[cost_matrix > self.threshold] = self.threshold
+        # print(cost_matrix)
         
         idx_from = np.arange(cost_matrix.shape[0])
         idx_to = cost_matrix.argmin(axis=1)
         link = cost_matrix.min(axis=1) != self.threshold
         
         # TODO avoid linking things twice with bidirectional linking --> This can be another exercise?
+        
+        
         
         idx_from = idx_from[link]
         idx_to = idx_to[link]
@@ -501,27 +536,29 @@ class NearestNeighborLinkerEuclidian(FrameByFrameLinker):
         # links[idx_from, idx_to] = True 
         # return links
 
-
 # %%
 Linker = NearestNeighborLinkerEuclidian(threshold=30)
 linking_matrices = Linker.link(detections)
-linked_detections = FrameByFrameLinker.relabel_detections(detections, linking_matrices)
+linked_detections = Linker.relabel_detections(detections, linking_matrices)
 
 # %%
-
-# %%
-viewer.close()
+try:
+    viewer.close()
+except NameError:
+    pass
+viewer = napari.Viewer()
 
 # %% [markdown]
 # Visualize results
 
 # %%
-# try:
-#     viewer.close()
-# except NameError:
-#     pass
+try:
+    viewer.close()
+except NameError:
+    pass
 viewer = napari.Viewer()
 viewer.add_image(x)
+viewer.add_labels(detections)
 viewer.add_labels(linked_detections)
 # visualize_tracks(viewer, linked_detections, name="NN")
 
