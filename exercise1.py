@@ -40,10 +40,17 @@
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Install dependencies and import packages
 
+# %% [markdown]
+# <div class="alert alert-block alert-danger"><h3>Napari from within a jupyter notebook.</h3>
+# <ul>
+#     <li>To have napari from within a jupyter notebook working, you need to use an up-to-date version of napari, as is the case in the conda environments provided together with this exercise.</li>
+#     <li>Whenever you are coding and debugging, close the viewer with `viewer.close()` to avoid problems with the napari and jupyter event loops.</li>
+# </ul>
+# </div>
+
 # %%
 # # !pip install -q tensorflow
 # # !pip install -q stardist
-# # !pip install nest_asyncio
 
 # %%
 import sys
@@ -168,6 +175,13 @@ viewer.add_image(x, name="image");
 
 
 # %% [markdown]
+# <div class="alert alert-block alert-danger"><h3>Napari in a jupyter notebook:</h3>
+#     
+# - To have napari working in a jupyter notebook, you need to use up-to-date versions of napari, pyqt and pyqt5, as is the case in the conda environments provided together with this exercise.
+# - Whenever you are coding and debugging, close the napari viewer with `viewer.close()` to avoid problems with the asynchronous napari and jupyter event loops.
+# </div>
+
+# %% [markdown]
 # Let's add the ground truth annotations. Now we can easily explore how the cells move over time.
 #
 # If you zoom in, you will note that the dense annotations are not perfect segmentations, but rather circles placed roughly in the center of each nucleus.
@@ -252,8 +266,6 @@ visualize_divisions(viewer, y, links.to_numpy());
 
 # %% [markdown] tags=[]
 # ### Load a pretrained stardist model, detect nuclei in one image and visualize them.
-#
-# TODO use a model pre-trained on this dataset instead of the general fluorescence nuclei model.
 
 # %% tags=[]
 idx = 0
@@ -289,18 +301,18 @@ plt.show()
 # ## Exercise 1.2
 # <div class="alert alert-block alert-info"><h3>Exercise 1.2: Explore the parameters of cell detection</h3>
 #
-# Explore the following aspects of the detection algorithm:
-#     
+# Explore the following aspects of the detection algorithm:     
 # - The `scale` parameter of the function `predict_instances` downscales (< 1) or upscales (> 1) the images by the given factor before feeding them to the neural network. How do the detections change if you adjust it?
 # - Inspect false positive and false negative detections. Do you observe patterns?
-#     
+# - So far we have used a StarDist off the shelf. Luckily, we also have a StarDist model that was trained on a subset of this breast cancer cells dataset. Load it with `model = StarDist2D(None, name="stardist_breast_cancer", basedir="models")` and qualitatively observe differences.
+#
 # </div>
 
 # %% [markdown]
 # Detect centers and segment nuclei in all images of the time lapse.
 
 # %%
-scale = (0.5, 0.5)
+scale = (1.0, 1.0)
 pred = [model.predict_instances(xi, show_tile_progress=False, scale=scale)
               for xi in tqdm(x)]
 detections = [xi[0] for xi in pred]
@@ -461,13 +473,22 @@ assert np.all(idx_to == [0, 1, 2])
 # ## Exercise 1.5
 # <div class="alert alert-block alert-info"><h3>Exercise 1.5: Complete a thresholded nearest neighbor linker using your functions from exercises 1.3 and 1.4.</h3>
 #
-# TODO a bit more in detail:
-#
-# Given a cost matrix for detections in a pair of frames, implement a neighest neighbor function:    
-# - For each detection in frame $t$, find the nearest neighbor in frame $t+1$. If the distance is below a threshold $\tau$, link the two objects.
-# - Do the above sequentially for each pair of adjacent frames.
+# You have to write two methods:
 #     
+# - Method 1 (`linking_cost_function`): Given dense detections in a pair of frames, extract their centroids and calculate pairwise euclidian distances between them. 
+# - Method 2 (`_link_two_frames`): For each detection in frame $t$, find the nearest neighbor in frame $t+1$ given the cost matrix. If the distance is below a threshold $\tau$, link the two objects. Explore different values of threshold $\tau$.
 # </div>
+
+# %% [markdown]
+# Here you are seeing an abstract base class (`ABC`) for linking detections in a video with some local frame-by-frame algorithm.
+#
+# The class already comes with some useful methods that you won't have to worry about, such as iterating over frames, visualizing linked results as well as sanity checks of inputs.
+#
+# There are two abstract methods ("gaps") in `FrameByFrameLinker`:
+# - `linking_cost_function`
+# - `_link_two_frames`
+#
+# In the exercises 1.5 - 1.8, you will make different subclasses of `FrameByFrameLinker`, in which it will be your job to write these two methods.
 
 # %%
 class FrameByFrameLinker(ABC):
@@ -603,7 +624,13 @@ class FrameByFrameLinker(ABC):
             raise ValueError("Detection IDs are not contiguous.")
 
 
+# %% [markdown]
+# Hints:
+# - Check out `skimage.measure.regionprops`.   
+
 # %%
+# Solution Exercise 1.5
+
 class NearestNeighborLinkerEuclidian(FrameByFrameLinker):
     """TODO make gaps for exercises"""
     
@@ -625,55 +652,62 @@ class NearestNeighborLinkerEuclidian(FrameByFrameLinker):
         """
         # regionprops regions are sorted by label
         regions0 = skimage.measure.regionprops(detections0)
-        centroids0 = [np.array(r.centroid) for r in regions0]
+        points0 = [np.array(r.centroid) for r in regions0]
         
         regions1 = skimage.measure.regionprops(detections1)
-        centroids1 = [np.array(r.centroid) for r in regions1]
+        points1 = [np.array(r.centroid) for r in regions1]
         
-        # TODO vectorize
         dists = []
-        for c0 in centroids0:
-            for c1 in centroids1:
-                dists.append(np.sqrt(((c0 - c1)**2).sum()))
+        for p0 in points0:
+            for p1 in points1:
+                dists.append(np.sqrt(((p0 - p1)**2).sum()))
 
-        dists = np.array(dists).reshape(len(centroids0), len(centroids1))
+        dists = np.array(dists).reshape(len(points0), len(points1))
         
         return dists
     
     def _link_two_frames(self, cost_matrix):
-        """Unidirectional nearest neighbor linking.
+        """Greedy nearest neighbor assignment.
+
+        Each point in both sets can only be assigned once. 
 
         Args:
-        
-            cost_matrix: m x n matrix with pairwise linking costs >= 0. 
+
+            cost_matrix: m x n matrix with pairwise linking costs of two sets of points.
 
         Returns:
 
             Tuple of lists (ids frame t, ids frame t+1).
+            Id indexing needs to start at 1, 0 is reserved for background.
         """
-        cost_matrix = cost_matrix.copy().astype(float)
-        assert np.all(cost_matrix >= 0)
-        cost_matrix[cost_matrix > self.threshold] = self.threshold
-        # print(cost_matrix)
-        
-        idx_from = np.arange(cost_matrix.shape[0])
-        idx_to = cost_matrix.argmin(axis=1)
-        link = cost_matrix.min(axis=1) != self.threshold
-        
-        # TODO ? Avoid linking things twice with bidirectional linking --> This can be another exercise?
-        
-        idx_from = idx_from[link]
-        idx_to = idx_to[link]
+        A = cost_matrix.copy().astype(float)
+        ids_from = []
+        ids_to = []
+        for i in range(min(A.shape[0], A.shape[1])):
+            if A.min() >= self.threshold:
+                break
+            row, col = np.unravel_index(A.argmin(), A.shape)
+            ids_from.append(row)
+            ids_to.append(col)
+            A[row, :] = cost_matrix.max() + 1
+            A[:, col] = cost_matrix.max() + 1
+
+        ids_from = np.array(ids_from)
+        ids_to = np.array(ids_to)
         
         # Account for +1 offset of the dense labels
-        idx_from += 1
-        idx_to += 1
+        ids_from += 1
+        ids_to += 1
         
-        return idx_from, idx_to
+        births = []
+        deaths = []
+        
+        return ids_from, ids_to
+        # return (ids_from, ids_to), births, deaths
 
 
 # %%
-nn_linker = NearestNeighborLinkerEuclidian(threshold=50) # TODO play with threshold
+nn_linker = NearestNeighborLinkerEuclidian(threshold=1000) # Explore different values of `threshold`
 nn_links = nn_linker.link(detections)
 nn_tracks = nn_linker.relabel_detections(detections, nn_links)
 
@@ -686,13 +720,8 @@ if viewer:
     viewer.close()
 viewer = napari.Viewer()
 viewer.add_image(x)
-viewer.add_labels(detections)
 visualize_tracks(viewer, nn_tracks, name="nn");
 
-
-# %% [markdown]
-# ## Checkpoint 2
-# <div class="alert alert-block alert-success"><h3>Checkpoint 2: We have a working basic tracking algorithm :).</h3></div>
 
 # %%
 # TODO metrics
@@ -702,11 +731,15 @@ visualize_tracks(viewer, nn_tracks, name="nn");
 
 # ANalyse your results visually and quanti.!
 
+# %% [markdown]
+# ## Checkpoint 2
+# <div class="alert alert-block alert-success"><h3>Checkpoint 2: We have a working basic tracking algorithm :).</h3></div>
+
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
-# ## Exercise 1.3
-# <div class="alert alert-block alert-info"><h3>Exercise 1.3: Estimate the global drift of the data</h3>
+# ## Exercise 1.6
+# <div class="alert alert-block alert-info"><h3>Exercise 1.6: Estimate the global drift of the data</h3>
 #
-# We observe that all cells move upwards in what appears to be a constant motion. Modify the cost function `euclidian distance` from above to take this into account and run the neareast neighbor linking again.
+# We can observe that all cells move upwards with an approximately constant displacement in each timestep. Write a slightly modified version of `NearestNeighborLinkerEuclidian` with a slightly modified `linking_cost_function` that accounts for this.
 #
 # </div>
 
@@ -737,29 +770,27 @@ class NearestNeighborLinkerDriftCorrection(NearestNeighborLinkerEuclidian):
         """
         # regionprops regions are sorted by label
         regions0 = skimage.measure.regionprops(detections0)
-        centroids0 = [np.array(r.centroid) for r in regions0]
+        points0 = [np.array(r.centroid) for r in regions0]
         
         regions1 = skimage.measure.regionprops(detections1)
-        centroids1 = [np.array(r.centroid) for r in regions1]
+        points1 = [np.array(r.centroid) for r in regions1]
         
-        # TODO vectorize
         dists = []
-        for c0 in centroids0:
-            for c1 in centroids1:
-                dists.append(np.sqrt(((c0 + self.drift - c1)**2).sum()))
+        for p0 in points0:
+            for p1 in points1:
+                dists.append(np.sqrt(((p0 + self.drift - p1)**2).sum()))
 
-        dists = np.array(dists).reshape(len(centroids0), len(centroids1))
+        dists = np.array(dists).reshape(len(points0), len(points1))
         
         return dists
 
 
 # %%
-drift_linker = NearestNeighborLinkerDriftCorrection(threshold=30, drift=(-15, 0))
+# Explore different values of `threshold` and `drift`
+# drift_linker = NearestNeighborLinkerDriftCorrection(threshold=30, drift=(-15, 0))
+drift_linker = NearestNeighborLinkerDriftCorrection(threshold=1000, drift=(0, 0))
 drift_links = drift_linker.link(detections)
 drift_tracks = drift_linker.relabel_detections(detections, drift_links)
-
-# %%
-# Optional: Estimate drift frame by frame?
 
 # %% [markdown]
 # Visualize results
@@ -777,8 +808,8 @@ visualize_tracks(viewer, drift_tracks, name="drift");
 # ## Optimal frame-by-frame matching (*Linear assignment problem* or *Weighted bipartite matching*)
 
 # %% [markdown] jp-MarkdownHeadingCollapsed=true tags=[]
-# ## Exercise 1.4
-# <div class="alert alert-block alert-info"><h3>Exercise 1.4: Perform optimal frame-by-frame linking</h3>
+# ## Exercise 1.7
+# <div class="alert alert-block alert-info"><h3>Exercise 1.7: Perform optimal frame-by-frame linking</h3>
 #
 # Set up the cost matrix such that you can use [`scipy.optimize.linear_sum_assignment`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.linear_sum_assignment.html) to solve the matching problem in the bipartite graph.
 #     
@@ -962,15 +993,15 @@ visualize_tracks(viewer, bm_tracks, name="bm");
 # ## Other suitable features for linking cost function
 
 # %% [markdown]
-# ## Exercise 1.5
+# ## Exercise 1.8
 #
-# <div class="alert alert-block alert-info"><h3>Exercise 1.5: Explore different features for assigment problem</h3>
+# <div class="alert alert-block alert-info"><h3>Exercise 1.8: Explore different features for assigment problem</h3>
 #
 # Explore solving the assignment problem based different features and cost functions.
 # For example:
-# - Different region properties (`skimage.measure.regionprops`).
+# - Different morphological properties of detections (e.g. using `skimage.measure.regionprops`).
 # - Extract texture features from the images, e.g. mean intensity for each detection.
-# - Pairwise *Intersection over Union (IoU)* detection.
+# - Pairwise *Intersection over Union (IoU)* of detections.
 # - ...
 #
 # Feel free to share tracking runs for which your features improved the results.    
