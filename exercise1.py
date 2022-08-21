@@ -21,7 +21,7 @@
 # Here we will walk through all basic components of a tracking-by-detection algorithm.
 #
 # You will learn
-# - how to **store and visualize** tracking results (Exercise 1.1).
+# - to **store and visualize** tracking results with `napari` (Exercise 1.1).
 # - to use a robust pretrained deep-learning-based **object detection** algorithm called *StarDist* (Exercise 1.2).
 # - to implement a basic nearest-neighbor linking algorithm (Exercises 1.3 - 1.6).
 # - to compute optimal frame-by-frame linking by setting up a bipartite matching problem and using a python-based solver (Exercise 1.7).
@@ -37,19 +37,7 @@
 # ![SegmentLocal](figures/trackmate-stardist-tracking.gif "segment")
 
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
-# ## Install dependencies and import packages
-
-# %% [markdown]
-# <div class="alert alert-block alert-danger"><h3>Napari from within a jupyter notebook.</h3>
-# <ul>
-#     <li>To have napari from within a jupyter notebook working, you need to use an up-to-date version of napari, as is the case in the conda environments provided together with this exercise.</li>
-#     <li>Whenever you are coding and debugging, close the viewer with `viewer.close()` to avoid problems with the napari and jupyter event loops.</li>
-# </ul>
-# </div>
-
-# %%
-# # !pip install -q tensorflow
-# # !pip install -q stardist
+# ## Import packages
 
 # %%
 import sys
@@ -118,7 +106,6 @@ def preprocess(X, Y, axis_norm=(0,1)):
 # Let's download the dataset to your machine.
 
 # %%
-# TODO write .csv version of man_track to switchdrive
 base_path = Path("data/cancer_cell_migration")
 
 if base_path.exists():
@@ -137,14 +124,16 @@ assert len(x) == len(y)
 print(f"Number of images: {len(x)}")
 print(f"Image shape: {x[0].shape}")
 links = np.loadtxt(base_path / "gt_tracking" / "man_track.txt", dtype=int)
-links = pd.read_csv(base_path / "gt_tracking" / "man_track.csv")
+links = pd.DataFrame(data=links, columns=["track_id", "from", "to", "parent_id"])
+# links = pd.read_csv(base_path / "gt_tracking" / "man_track.csv")
 print("Links")
-links
+links[:10]
 
 # %% [markdown]
 # Crop the dataset in time and space to reduce runtime; preprocess.
 
 # %%
+# TODO final version of the dataset to switchdrive and remove this.
 delta_t = 5
 
 x = x[::delta_t, 300:, :]
@@ -303,7 +292,7 @@ plt.show()
 # Explore the following aspects of the detection algorithm:     
 # - The `scale` parameter of the function `predict_instances` downscales (< 1) or upscales (> 1) the images by the given factor before feeding them to the neural network. How do the detections change if you adjust it?
 # - Inspect false positive and false negative detections. Do you observe patterns?
-# - So far we have used a StarDist off the shelf. Luckily, we also have a StarDist model that was trained on a subset of this breast cancer cells dataset. Load it with `model = StarDist2D(None, name="stardist_breast_cancer", basedir="models")` and qualitatively observe differences.
+# - So far we have used a StarDist off the shelf. Luckily, we also have a StarDist model that was trained on a subset of this breast cancer cells dataset (from https://zenodo.org/record/4034976#.Yv-aNPFBzao). Load it with `model = StarDist2D(None, name="stardist_breast_cancer", basedir="models")` and qualitatively observe differences.
 #
 # </div>
 
@@ -319,7 +308,7 @@ detections = np.stack([skimage.segmentation.relabel_sequential(d)[0] for d in de
 centers = [xi[1]["points"] for xi in pred]
 
 # %% [markdown]
-# Visualize the dense detections. They are still not linked.
+# Visualize the dense detections. Note that they are still not linked and therefore randomly colored.
 
 # %%
 viewer = napari.viewer.current_viewer()
@@ -655,79 +644,11 @@ class FrameByFrameLinker(ABC):
         if n != len(np.unique(x)):
             raise ValueError("Detection IDs are not contiguous.")
 
-
 # %% [markdown]
 # Hints:
 # - Check out `skimage.measure.regionprops`.   
 
 # %%
-class NearestNeighborLinkerEuclidian(FrameByFrameLinker):
-    """.
-    
-    Args:
-    
-        threshold (float): Maximum euclidian distance for linking.
-    """
-    
-    def __init__(self, threshold=sys.float_info.max, *args, **kwargs):
-        self.threshold = threshold
-        super().__init__(*args, **kwargs)
-    
-    def linking_cost_function(self, detections0, detections1, image0=None, image1=None):
-        """ Get centroids from detections and compute pairwise euclidian distances.
-                
-        Args:
-        
-            detections0: image with background 0 and detections 1, ..., m
-            detections1: image with backgruond 0 and detections 1, ..., n
-            
-        Returns:
-        
-            m x n cost matrix 
-        """
-        ### YOUR CODE HERE ###
-        dists = np.zeros((detections0.max(), detections1.max()))
-        
-        return dists
-    
-    def _link_two_frames(self, cost_matrix):
-        """Greedy nearest neighbor assignment.
-
-        Each point in both sets can only be assigned once. 
-
-        Args:
-
-            cost_matrix: m x n matrix containing pairwise linking costs of two sets of points.
-
-        Returns:
-            Linking dictionary:
-                "links": Tuple of lists (ids frame t, ids frame t+1),
-                "births": List of ids,
-                "deaths": List of ids.
-            Ids are one-based, 0 is reserved for background.
-        """
-        
-        min_objs = min(cost_matrix.shape[0], cost_matrix.shape[1])
-        ids_from = np.arange(min_objs)
-        ids_to = np.arange(min_objs)
-        births = np.arange(min_objs, cost_matrix.shape[1])
-        deaths = np.arange(min_objs, cost_matrix.shape[0])
-        
-        ### YOUR CODE HERE (REPLACE THE DUMMY INITIALIZATIONS ABOVE) ###
-        
-                            
-        # Account for +1 offset of the dense labels
-        ids_from += 1
-        ids_to += 1
-        births += 1
-        deaths += 1
-        
-        links = {"links": (ids_from, ids_to), "births": births, "deaths": deaths}
-        return links
-
-# %%
-# # Solution Exercise 1.5
-
 # class NearestNeighborLinkerEuclidian(FrameByFrameLinker):
 #     """.
     
@@ -752,19 +673,8 @@ class NearestNeighborLinkerEuclidian(FrameByFrameLinker):
         
 #             m x n cost matrix 
 #         """
-#         # regionprops regions are sorted by label
-#         regions0 = skimage.measure.regionprops(detections0)
-#         points0 = [np.array(r.centroid) for r in regions0]
-        
-#         regions1 = skimage.measure.regionprops(detections1)
-#         points1 = [np.array(r.centroid) for r in regions1]
-        
-#         dists = []
-#         for p0 in points0:
-#             for p1 in points1:
-#                 dists.append(np.sqrt(((p0 - p1)**2).sum()))
-
-#         dists = np.array(dists).reshape(len(points0), len(points1))
+#         ### YOUR CODE HERE ###
+#         dists = np.zeros((detections0.max(), detections1.max()))
         
 #         return dists
     
@@ -784,23 +694,16 @@ class NearestNeighborLinkerEuclidian(FrameByFrameLinker):
 #                 "deaths": List of ids.
 #             Ids are one-based, 0 is reserved for background.
 #         """
-#         A = cost_matrix.copy().astype(float)
-#         ids_from = []
-#         ids_to = []
-#         for i in range(min(A.shape[0], A.shape[1])):
-#             if A.min() >= self.threshold:
-#                 break
-#             row, col = np.unravel_index(A.argmin(), A.shape)
-#             ids_from.append(row)
-#             ids_to.append(col)
-#             A[row, :] = cost_matrix.max() + 1
-#             A[:, col] = cost_matrix.max() + 1
-
-#         ids_from = np.array(ids_from)
-#         ids_to = np.array(ids_to)
-#         births = np.array(list(set(range(A.shape[1])) - set(ids_to)))
-#         deaths = np.array(list(set(range(A.shape[0])) - set(ids_from)))
         
+#         min_objs = min(cost_matrix.shape[0], cost_matrix.shape[1])
+#         ids_from = np.arange(min_objs)
+#         ids_to = np.arange(min_objs)
+#         births = np.arange(min_objs, cost_matrix.shape[1])
+#         deaths = np.arange(min_objs, cost_matrix.shape[0])
+        
+#         ### YOUR CODE HERE (REPLACE THE DUMMY INITIALIZATIONS ABOVE) ###
+        
+                            
 #         # Account for +1 offset of the dense labels
 #         ids_from += 1
 #         ids_to += 1
@@ -811,7 +714,94 @@ class NearestNeighborLinkerEuclidian(FrameByFrameLinker):
 #         return links
 
 # %%
-nn_linker = NearestNeighborLinkerEuclidian(threshold=1000) # Explore different values of `threshold`
+# Solution Exercise 1.5
+
+class NearestNeighborLinkerEuclidian(FrameByFrameLinker):
+    """.
+    
+    Args:
+    
+        threshold (float): Maximum euclidian distance for linking.
+    """
+    
+    def __init__(self, threshold=sys.float_info.max, *args, **kwargs):
+        self.threshold = threshold
+        super().__init__(*args, **kwargs)
+    
+    def linking_cost_function(self, detections0, detections1, image0=None, image1=None):
+        """ Get centroids from detections and compute pairwise euclidian distances.
+                
+        Args:
+        
+            detections0: image with background 0 and detections 1, ..., m
+            detections1: image with backgruond 0 and detections 1, ..., n
+            
+        Returns:
+        
+            m x n cost matrix 
+        """
+        # regionprops regions are sorted by label
+        regions0 = skimage.measure.regionprops(detections0)
+        points0 = [np.array(r.centroid) for r in regions0]
+        
+        regions1 = skimage.measure.regionprops(detections1)
+        points1 = [np.array(r.centroid) for r in regions1]
+        
+        dists = []
+        for p0 in points0:
+            for p1 in points1:
+                dists.append(np.sqrt(((p0 - p1)**2).sum()))
+
+        dists = np.array(dists).reshape(len(points0), len(points1))
+        
+        return dists
+    
+    def _link_two_frames(self, cost_matrix):
+        """Greedy nearest neighbor assignment.
+
+        Each point in both sets can only be assigned once. 
+
+        Args:
+
+            cost_matrix: m x n matrix containing pairwise linking costs of two sets of points.
+
+        Returns:
+            Linking dictionary:
+                "links": Tuple of lists (ids frame t, ids frame t+1),
+                "births": List of ids,
+                "deaths": List of ids.
+            Ids are one-based, 0 is reserved for background.
+        """
+        A = cost_matrix.copy().astype(float)
+        ids_from = []
+        ids_to = []
+        for i in range(min(A.shape[0], A.shape[1])):
+            if A.min() >= self.threshold:
+                break
+            row, col = np.unravel_index(A.argmin(), A.shape)
+            ids_from.append(row)
+            ids_to.append(col)
+            A[row, :] = cost_matrix.max() + 1
+            A[:, col] = cost_matrix.max() + 1
+
+        ids_from = np.array(ids_from)
+        ids_to = np.array(ids_to)
+        births = np.array(list(set(range(A.shape[1])) - set(ids_to)))
+        deaths = np.array(list(set(range(A.shape[0])) - set(ids_from)))
+        
+        # Account for +1 offset of the dense labels
+        ids_from += 1
+        ids_to += 1
+        births += 1
+        deaths += 1
+        
+        links = {"links": (ids_from, ids_to), "births": births, "deaths": deaths}
+        return links
+
+
+# %%
+# nn_linker = NearestNeighborLinkerEuclidian(threshold=1000) # Explore different values of `threshold`
+nn_linker = NearestNeighborLinkerEuclidian(threshold=50) # Solution param
 nn_links = nn_linker.link(detections)
 nn_tracks = nn_linker.relabel_detections(detections, nn_links)
 
@@ -840,7 +830,7 @@ visualize_tracks(viewer, nn_tracks, name="nn");
 
 # %% [markdown]
 # ## Checkpoint 2
-# <div class="alert alert-block alert-success"><h3>Checkpoint 2: We have a basic tracking algorithm :).</h3></div>
+# <div class="alert alert-block alert-success"><h3>Checkpoint 2: We built a basic tracking algorithm from scratch :).</h3></div>
 
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Exercise 1.6
@@ -875,6 +865,7 @@ visualize_tracks(viewer, nn_tracks, name="nn");
         
 #             m x n cost matrix 
 #         """
+#         ### YOUR CODE HERE
 #         dists = np.zeros((detections0.max(), detections1.max()))
 #         return dists
 
@@ -924,8 +915,8 @@ class NearestNeighborLinkerDriftCorrection(NearestNeighborLinkerEuclidian):
 
 # %%
 # Explore different values of `threshold` and `drift`
-drift_linker = NearestNeighborLinkerDriftCorrection(threshold=30, drift=(-15, 0))
 # drift_linker = NearestNeighborLinkerDriftCorrection(threshold=1000, drift=(0, 0))
+drift_linker = NearestNeighborLinkerDriftCorrection(threshold=50, drift=(-20, 0)) # SOLUTION params
 drift_links = drift_linker.link(detections)
 drift_tracks = drift_linker.relabel_detections(detections, drift_links)
 
@@ -939,7 +930,6 @@ if viewer:
 viewer = napari.Viewer()
 viewer.add_image(x)
 visualize_tracks(viewer, drift_tracks, name="drift");
-
 
 # %% [markdown] tags=[]
 # ## Optimal frame-by-frame matching (*Linear assignment problem* or *Weighted bipartite matching*)
@@ -964,89 +954,6 @@ visualize_tracks(viewer, drift_tracks, name="drift");
 # from Jaqaman, Khuloud, et al. "Robust single-particle tracking in live-cell time-lapse sequences." Nature Methods (2008)
 
 # %%
-class BipartiteMatchingLinker(FrameByFrameLinker):
-    """.
-    
-    Args:
-        threshold (float): Maximum euclidian distance for linking.
-        drift: tuple of (x,y) drift correction per frame.
-        birth_cost_factor (float): Multiply factor with maximum entry in cost matrix.
-        death_cost_factor (float): Multiply factor with maximum entry in cost matrix.
-    """
-    
-    def __init__(
-        self,
-        threshold=sys.float_info.max,
-        drift=(0,0),
-        birth_cost_factor=1.05,
-        death_cost_factor=1.05,
-        *args,
-        **kwargs
-    ):
-        self.threshold = threshold
-        self.drift = np.array(drift)
-        self.birth_cost_factor = birth_cost_factor
-        self.death_cost_factor = death_cost_factor
-        
-        super().__init__(*args, **kwargs)
-        
-    def linking_cost_function(self, detections0, detections1, image0=None, image1=None):
-        """ Get centroids from detections and compute pairwise euclidian distances with drift correction.
-                
-        Args:
-        
-            detections0: image with background 0 and detections 1, ..., m
-            detections1: image with backgruond 0 and detections 1, ..., n
-            
-        Returns:
-        
-            m x n cost matrix 
-        """
-        dists = np.zeros((detections0.max(), detections1.max()))
-        return dists
-    
-    def _link_two_frames(self, cost_matrix):
-        """Weighted bipartite matching with square matrix from Jaqaman et al (2008).
-
-        Args:
-
-            cost_matrix: m x n matrix.
-
-        Returns:
-        
-            Linking dictionary:
-                "links": Tuple of lists (ids frame t, ids frame t+1),
-                "births": List of ids,
-                "deaths": List of ids.
-            Ids are one-based, 0 is reserved for background.
-        """
-        
-        cost_matrix = cost_matrix.copy().astype(float)
-        b = self.birth_cost_factor * min(self.threshold, cost_matrix.max())
-        d = self.death_cost_factor * min(self.threshold, cost_matrix.max())
-        no_link = max(cost_matrix.max(), max(b, d)) * 1e9
-        
-        
-        min_objs = min(cost_matrix.shape[0], cost_matrix.shape[1])
-        ids_from = np.arange(min_objs)
-        ids_to = np.arange(min_objs)
-        births = np.arange(min_objs, cost_matrix.shape[1])
-        deaths = np.arange(min_objs, cost_matrix.shape[0])
-        
-        ### YOUR CODE HERE (REPLACE THE DUMMY INITIALIZATIONS FOR THE RETURN VARIABLES ABOVE) ###
-                        
-        # Account for +1 offset of the dense labels
-        ids_from += 1
-        ids_to += 1
-        births += 1
-        deaths += 1
-        
-        links = {"links": (ids_from, ids_to), "births": births, "deaths": deaths}
-        return links
-
-# %%
-# # Solution exercise 1.7
-
 # class BipartiteMatchingLinker(FrameByFrameLinker):
 #     """.
     
@@ -1085,20 +992,7 @@ class BipartiteMatchingLinker(FrameByFrameLinker):
         
 #             m x n cost matrix 
 #         """
-#         # regionprops regions are sorted by label
-#         regions0 = skimage.measure.regionprops(detections0)
-#         points0 = [np.array(r.centroid) for r in regions0]
-        
-#         regions1 = skimage.measure.regionprops(detections1)
-#         points1 = [np.array(r.centroid) for r in regions1]
-        
-#         dists = []
-#         for p0 in points0:
-#             for p1 in points1:
-#                 dists.append(np.sqrt(((p0 + self.drift - p1)**2).sum()))
-
-#         dists = np.array(dists).reshape(len(points0), len(points1))
-        
+#         dists = np.zeros((detections0.max(), detections1.max()))
 #         return dists
     
 #     def _link_two_frames(self, cost_matrix):
@@ -1122,38 +1016,14 @@ class BipartiteMatchingLinker(FrameByFrameLinker):
 #         d = self.death_cost_factor * min(self.threshold, cost_matrix.max())
 #         no_link = max(cost_matrix.max(), max(b, d)) * 1e9
         
-#         cost_matrix[cost_matrix > self.threshold] = no_link
-#         lower_right = cost_matrix.transpose()
-
-#         deaths = np.full(shape=(cost_matrix.shape[0], cost_matrix.shape[0]), fill_value=no_link)
-#         np.fill_diagonal(deaths, d)
-#         births = np.full(shape=(cost_matrix.shape[1], cost_matrix.shape[1]), fill_value=no_link)
-#         np.fill_diagonal(births, b)
         
-#         square_cost_matrix = np.block([
-#             [cost_matrix, deaths],
-#             [births, lower_right],
-#         ])
-#         row_ind, col_ind = scipy.optimize.linear_sum_assignment(square_cost_matrix)
+#         min_objs = min(cost_matrix.shape[0], cost_matrix.shape[1])
+#         ids_from = np.arange(min_objs)
+#         ids_to = np.arange(min_objs)
+#         births = np.arange(min_objs, cost_matrix.shape[1])
+#         deaths = np.arange(min_objs, cost_matrix.shape[0])
         
-#         ids_from = []
-#         ids_to = []
-#         births = []
-#         deaths = []
-#         for row, col in zip(row_ind, col_ind):
-#             if row < cost_matrix.shape[0] and col < cost_matrix.shape[1]:
-#                 ids_from.append(row)
-#                 ids_to.append(col)
-
-#             if row >= cost_matrix.shape[0] and col < cost_matrix.shape[1]:
-#                 births.append(col)
-#             if row < cost_matrix.shape[0] and col >= cost_matrix.shape[1]:
-#                 deaths.append(row)
-
-#         ids_from = np.array(ids_from)
-#         ids_to = np.array(ids_to)
-#         births = np.array(births)
-#         deaths = np.array(deaths)
+#         ### YOUR CODE HERE (REPLACE THE DUMMY INITIALIZATIONS FOR THE RETURN VARIABLES ABOVE) ###
                         
 #         # Account for +1 offset of the dense labels
 #         ids_from += 1
@@ -1163,6 +1033,127 @@ class BipartiteMatchingLinker(FrameByFrameLinker):
         
 #         links = {"links": (ids_from, ids_to), "births": births, "deaths": deaths}
 #         return links
+
+# %%
+# Solution exercise 1.7
+
+class BipartiteMatchingLinker(FrameByFrameLinker):
+    """.
+    
+    Args:
+        threshold (float): Maximum euclidian distance for linking.
+        drift: tuple of (x,y) drift correction per frame.
+        birth_cost_factor (float): Multiply factor with maximum entry in cost matrix.
+        death_cost_factor (float): Multiply factor with maximum entry in cost matrix.
+    """
+    
+    def __init__(
+        self,
+        threshold=sys.float_info.max,
+        drift=(0,0),
+        birth_cost_factor=1.05,
+        death_cost_factor=1.05,
+        *args,
+        **kwargs
+    ):
+        self.threshold = threshold
+        self.drift = np.array(drift)
+        self.birth_cost_factor = birth_cost_factor
+        self.death_cost_factor = death_cost_factor
+        
+        super().__init__(*args, **kwargs)
+        
+    def linking_cost_function(self, detections0, detections1, image0=None, image1=None):
+        """ Get centroids from detections and compute pairwise euclidian distances with drift correction.
+                
+        Args:
+        
+            detections0: image with background 0 and detections 1, ..., m
+            detections1: image with backgruond 0 and detections 1, ..., n
+            
+        Returns:
+        
+            m x n cost matrix 
+        """
+        # regionprops regions are sorted by label
+        regions0 = skimage.measure.regionprops(detections0)
+        points0 = [np.array(r.centroid) for r in regions0]
+        
+        regions1 = skimage.measure.regionprops(detections1)
+        points1 = [np.array(r.centroid) for r in regions1]
+        
+        dists = []
+        for p0 in points0:
+            for p1 in points1:
+                dists.append(np.sqrt(((p0 + self.drift - p1)**2).sum()))
+
+        dists = np.array(dists).reshape(len(points0), len(points1))
+        
+        return dists
+    
+    def _link_two_frames(self, cost_matrix):
+        """Weighted bipartite matching with square matrix from Jaqaman et al (2008).
+
+        Args:
+
+            cost_matrix: m x n matrix.
+
+        Returns:
+        
+            Linking dictionary:
+                "links": Tuple of lists (ids frame t, ids frame t+1),
+                "births": List of ids,
+                "deaths": List of ids.
+            Ids are one-based, 0 is reserved for background.
+        """
+        
+        cost_matrix = cost_matrix.copy().astype(float)
+        b = self.birth_cost_factor * min(self.threshold, cost_matrix.max())
+        d = self.death_cost_factor * min(self.threshold, cost_matrix.max())
+        no_link = max(cost_matrix.max(), max(b, d)) * 1e9
+        
+        cost_matrix[cost_matrix > self.threshold] = no_link
+        lower_right = cost_matrix.transpose()
+
+        deaths = np.full(shape=(cost_matrix.shape[0], cost_matrix.shape[0]), fill_value=no_link)
+        np.fill_diagonal(deaths, d)
+        births = np.full(shape=(cost_matrix.shape[1], cost_matrix.shape[1]), fill_value=no_link)
+        np.fill_diagonal(births, b)
+        
+        square_cost_matrix = np.block([
+            [cost_matrix, deaths],
+            [births, lower_right],
+        ])
+        row_ind, col_ind = scipy.optimize.linear_sum_assignment(square_cost_matrix)
+        
+        ids_from = []
+        ids_to = []
+        births = []
+        deaths = []
+        for row, col in zip(row_ind, col_ind):
+            if row < cost_matrix.shape[0] and col < cost_matrix.shape[1]:
+                ids_from.append(row)
+                ids_to.append(col)
+
+            if row >= cost_matrix.shape[0] and col < cost_matrix.shape[1]:
+                births.append(col)
+            if row < cost_matrix.shape[0] and col >= cost_matrix.shape[1]:
+                deaths.append(row)
+
+        ids_from = np.array(ids_from)
+        ids_to = np.array(ids_to)
+        births = np.array(births)
+        deaths = np.array(deaths)
+                        
+        # Account for +1 offset of the dense labels
+        ids_from += 1
+        ids_to += 1
+        births += 1
+        deaths += 1
+        
+        links = {"links": (ids_from, ids_to), "births": births, "deaths": deaths}
+        return links
+
 
 # %%
 bm_linker = BipartiteMatchingLinker(threshold=50, drift=(-20, 0), birth_cost_factor=1.05, death_cost_factor=1.05)
@@ -1216,7 +1207,7 @@ class YourLinker(BipartiteMatchingLinker):
         
             m x n cost matrix 
         """
-        return np.zeros((detections0.max(), detections1.max())    )
+        return np.zeros((detections0.max(), detections1.max()))
 
 
 # %%
