@@ -16,10 +16,12 @@
 # %% [markdown]
 # # Exercise 1/3: Tracking by detection and simple frame-by-frame matching
 #
-# You can run this notebook on your laptop, a GPU is not needed :).
+# You could also run this notebook on your laptop, a GPU is not needed.
 #
 # Here we will walk through all basic components of a tracking-by-detection algorithm.
-#     
+#
+# TODO update
+#
 # You will learn
 # - to use a robust pretrained deep-learning-based **object detection** algorithm called _StarDist_ (Exercise 1.1).
 # - to implement a basic nearest-neighbor linking algorithm (Exercises 1.2 + 1.3).
@@ -105,7 +107,9 @@ def preprocess(X, Y, axis_norm=(0,1)):
 # ## Inspect the dataset
 
 # %% [markdown]
-# Download the dataset
+# For this exercise we will be working with a fluorenscence microscopy time-lapse of breast cancer cells with stained nuclei (SiR-DNA).
+#
+# Let's download the dataset to your machine.
 
 # %%
 # TODO write .csv version of man_track to switchdrive
@@ -118,7 +122,7 @@ else:
     # !unzip -q data/cancer_cell_migration.zip -d data
 
 # %% [markdown]
-# Load the dataset (images and tracking annotations) from disk.
+# Load the dataset (images and tracking annotations) from disk into this notebook.
 
 # %%
 x = np.stack([imread(xi) for xi in sorted((base_path / "images").glob("*.tif"))])
@@ -132,13 +136,13 @@ print("Links")
 links
 
 # %% [markdown]
-# Crop the dataset in time and space to reduce runtime
+# Crop the dataset in time and space to reduce runtime; preprocess.
 
 # %%
 delta_t = 5
 
-x = x[::delta_t, :, :]
-y = y[::delta_t, :, :]
+x = x[::delta_t, 300:, :]
+y = y[::delta_t, 300:, :]
 # x = x[:5:delta_t, -64:, -64:]
 # y = y[:5:delta_t, -64:, -64:]
 
@@ -146,10 +150,6 @@ links["from"] = (np.ceil(links["from"] / 5)).astype(int)
 links["to"] = (np.ceil(links["to"] // 5)).astype(int)
 print(f"Number of images: {len(x)}")
 print(f"Image shape: {x[0].shape}")
-print("Links")
-links[:10]
-
-# %%
 x, y = preprocess(x, y)
 
 # %% [markdown]
@@ -163,9 +163,6 @@ plot_img_label(x[idx], y[idx])
 # This is ok to take a glimpse, but a dynamic viewer would be much better. Let's use [napari](https://napari.org/tutorials/fundamentals/getting_started.html) for this.
 
 # %%
-viewer = napari.viewer.current_viewer()
-if viewer:
-    viewer.close()
 viewer = napari.Viewer()
 viewer.add_image(x, name="image");
 
@@ -173,7 +170,7 @@ viewer.add_image(x, name="image");
 # %% [markdown]
 # Let's add the ground truth annotations. Now we can easily explore how the cells move over time.
 #
-# If you zoom in, you will note that the dense annotations are not perfect segmentations, but rather circular objects placed roughly in the center of each nucleus.
+# If you zoom in, you will note that the dense annotations are not perfect segmentations, but rather circles placed roughly in the center of each nucleus.
 
 # %%
 def visualize_tracks(viewer, y, links=None, name=""):
@@ -210,23 +207,29 @@ visualize_tracks(viewer, y, links.to_numpy(), "ground_truth");
 # ## Exercise 1.1
 # <div class="alert alert-block alert-info"><h3>Exercise 1.1: Highlight the cell divisions</h3>
 #
-# The visualization of the ground truth tracks help our visual system to process this video, it is still hard see sparse events, e.g. the cell divisions. Given the dense annotations `y` and the track links `links`, write a function that highlights the pairs of daughter cells just after mitosis.
+# The visualization of the ground truth tracks are useful to grasp this video, but it is still hard see the cell divisions. Given the dense annotations `y` and the track links `links`, write a function to create a new layer that highlights the pairs of daughter cells just after mitosis.
 #     
 # </div>
-#
-# TODO add example image of output
+# Expected outcome:<br>
+# <figure style="display:inline-block">
+#     <img src="figures/prediv.png" width="400" />
+#     <figcaption>t = 6</figcaption>
+# </figure>
+# <figure style="display:inline-block">
+#     <img src="figures/postdiv.png" width="400" />
+#     <figcaption>t = 7</figcaption>
+# </figure>
 
 # %%
-def visualize_divisions(viewer, y, links):
-    """Utility function to visualize divisions"""
-    ### YOUR CODE HERE ###
-    divisions = np.zeros_like(y)
-    viewer.add_labels(divisions, name="divisions")
-    return divisions
-
+# def visualize_divisions(viewer, y, links):
+#     """Utility function to visualize divisions"""
+#     ### YOUR CODE HERE ###
+#     divisions = np.zeros_like(y)
+#     viewer.add_labels(divisions, name="divisions")
+#     return divisions
 
 # %%
-# Exercise 1.1 solution
+# Solution Exercise 1.1
 def visualize_divisions(viewer, y, links):
     """Utility function to visualize divisions"""
     daughters = links[links[:,3] != 0]
@@ -259,9 +262,9 @@ detections, details = model.predict_instances(x[idx], scale=(1,1))
 plot_img_label(x[idx], detections, lbl_title="detections")
 
 # %% [markdown]
-# Here we visualize in detail the polygons we have detected with StarDist. TODO more description
+# Here we visualize in detail the polygons we have detected with StarDist. TODO some description on how StarDist works.
 #
-# Notice that each object comes with a center point, which we can use to compute pairwise euclidian distances between objects.
+# <!-- Notice that each object comes with a center point, which we can use to compute pairwise euclidian distances between objects. -->
 
 # %%
 coord, points, prob = details['coord'], details['points'], details['prob']
@@ -288,7 +291,7 @@ plt.show()
 #
 # Explore the following aspects of the detection algorithm:
 #     
-# - The `scale` parameter of the function `predict_instances` downscales the images by the given factor before feeding them to the neural network. What happens if you increase it?
+# - The `scale` parameter of the function `predict_instances` downscales (< 1) or upscales (> 1) the images by the given factor before feeding them to the neural network. How do the detections change if you adjust it?
 # - Inspect false positive and false negative detections. Do you observe patterns?
 #     
 # </div>
@@ -332,36 +335,133 @@ plt.show();
 
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true tags=[]
 # ## Greedy linking by nearest neighbor
+#
+# TODO write introduction text.
 
-# %% [markdown] tags=[]
-# Function to compute pairwise euclidian distance for detections in two adjacent frames.
+# %% [markdown]
+# ## Exercise 1.3
+# <div class="alert alert-block alert-info"><h3>Exercise 1.3: Write a function that computes pairwise euclidian distances given two lists of points.</h3></div>
 
 # %%
-# def euclidian_distance(start_points, end_points):
-#     # TODO vectorize
-#     dists = []
-#     for sp in start_points:
-#         for ep in end_points:
-#             dists.append(np.sqrt(((sp - ep)**2).sum()))
-            
-#     dists = np.array(dists).reshape(len(start_points), len(end_points))
+# def euclidian_distance(points0, points1):
+#     dists = np.zeros((len(points0), len(points1)))
+#     ### YOUR CODE HERE ###
 #     return dists
 
 # %%
-# dist0 = euclidian_distance(centers[0], centers[1])
-# plt.figure(figsize=(5,5))
-# plt.title("Pairwise distance matrix")
-# plt.imshow(dist0);
+# Solution Exercise 1.3
 
-# %%
-# TODO given sets of points, get eucialidian distances
+def pairwise_euclidian_distance(points0, points1):
+    print("Iterative pairwise euclidian distance")
+    dists = []
+    for p0 in points0:
+        for p1 in points1:
+            dists.append(np.sqrt(((p0 - p1)**2).sum()))
+            
+    dists = np.array(dists).reshape(len(points0), len(points1))
+    return dists
 
-# %%
-# Given toy matrix, do greedy iterative neareast neighbor
+# def pairwise_euclidian_distance(points0, points1):
+#     # TODO This is slow, make a fast numpy implementation
+#     print("Vectorized pairwise euclidian distance")
+#     return np.apply_along_axis(
+#         np.linalg.norm,
+#         2,
+#         points0[:, None, :] - points1[None, :, :]
+#     )
+
+# def pairwise_euclidian_distance(points0, points1):
+#     print("Scipy pairwise euclidian distance")
+#     return scipy.spatial.distance.cdist(points0, points1)
+
 
 # %% [markdown] tags=[]
-# ## Exercise 1.3
-# <div class="alert alert-block alert-info"><h3>Exercise 1.3: Complete a basic thresholded nearest neighbor linking function</h3>
+# Here are two (almost random ;)) lists of points to test your function on.
+
+# %%
+green_points = np.load("points.npz")["green"]
+cyan_points = np.load("points.npz")["cyan"]
+
+# %%
+# %time dists = pairwise_euclidian_distance(green_points, cyan_points)
+assert np.allclose(dists, np.load("points.npz")["dists_green_cyan"])
+
+
+# %% [markdown]
+# ## Exercise 1.4
+# <div class="alert alert-block alert-info"><h3>Exercise 1.4: Write a function that greedily extracts a nearest neighbors assignment given a cost matrix.</h3></div>
+
+# %%
+# def nearest_neighbor(cost_matrix):
+#     """Greedy nearest neighbor assignment.
+    
+#     Each point in both sets can only be assigned once. 
+    
+#     Args:
+
+#         cost_matrix: m x n matrix with pairwise linking costs of two sets of points.
+
+#     Returns:
+
+#         Determined matches as tuple of lists (ids_of_rows, ids_of_columns).
+#     """
+
+#     ids_from = []
+#     ids_to = []
+#     ### YOUR CODE HERE ###
+    
+#     return np.array(ids_from), np.array(ids_to)
+
+# %%
+# Solution exercise 1.4
+
+def nearest_neighbor(cost_matrix):
+    """Greedy nearest neighbor assignment.
+    
+    Each point in both sets can only be assigned once. 
+    
+    Args:
+
+        cost_matrix: m x n matrix with pairwise linking costs of two sets of points.
+
+    Returns:
+
+        Tuple of lists (ids frame t, ids frame t+1).
+    """
+    print("Iterative nearest neighbor")
+    A = cost_matrix.copy().astype(float)
+    ids_from = []
+    ids_to = []
+    for i in range(min(A.shape[0], A.shape[1])):
+        row, col = np.unravel_index(A.argmin(), A.shape)
+        ids_from.append(row)
+        ids_to.append(col)
+        A[row, :] = cost_matrix.max() + 1
+        A[:, col] = cost_matrix.max() + 1
+
+    return np.array(ids_from), np.array(ids_to)
+
+
+# %% [markdown]
+# Test your implementation
+
+# %%
+test_matrix = np.array([
+    [9, 2, 9],
+    [9, 9, 9],
+    [1, 9, 9],
+    [9, 3, 9],
+])
+idx_from, idx_to = nearest_neighbor(test_matrix)
+assert np.all(idx_from == [2, 0, 1])
+assert np.all(idx_to == [0, 1, 2])
+
+
+# %% [markdown] tags=[]
+# ## Exercise 1.5
+# <div class="alert alert-block alert-info"><h3>Exercise 1.5: Complete a thresholded nearest neighbor linker using your functions from exercises 1.3 and 1.4.</h3>
+#
+# TODO a bit more in detail:
 #
 # Given a cost matrix for detections in a pair of frames, implement a neighest neighbor function:    
 # - For each detection in frame $t$, find the nearest neighbor in frame $t+1$. If the distance is below a threshold $\tau$, link the two objects.
