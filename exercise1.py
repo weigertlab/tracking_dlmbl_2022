@@ -67,9 +67,12 @@ from stardist.models import StarDist2D
 from stardist import _draw_polygons
 from csbdeep.utils import normalize
 
+# Not needed in newer version anymore
 # To interact with napari viewer from within a notebook
-import nest_asyncio
-nest_asyncio.apply()
+# import nest_asyncio
+# nest_asyncio.apply()
+
+
 import napari
 
 lbl_cmap = random_label_cmap()
@@ -123,22 +126,28 @@ y = np.stack([imread(yi) for yi in sorted((base_path / "gt_tracking").glob("*.ti
 assert len(x) == len(y)
 print(f"Number of images: {len(x)}")
 print(f"Image shape: {x[0].shape}")
-
-# %%
 # links = np.loadtxt(base_path / "gt_tracking" / "man_track.txt", dtype=int)
 links = pd.read_csv(base_path / "gt_tracking" / "man_track.csv")
-links[:10]
+print("Links")
+links
 
 # %% [markdown]
 # Crop the dataset in time and space to reduce runtime
 
 # %%
-x = x[:20, 300:, :]
-y = y[:20, 300:, :]
-# x = x[:5, -64:, -64:]
-# y = y[:5, -64:, -64:]
+delta_t = 5
+
+x = x[::delta_t, :, :]
+y = y[::delta_t, :, :]
+# x = x[:5:delta_t, -64:, -64:]
+# y = y[:5:delta_t, -64:, -64:]
+
+links["from"] = (np.ceil(links["from"] / 5)).astype(int)
+links["to"] = (np.ceil(links["to"] // 5)).astype(int)
 print(f"Number of images: {len(x)}")
 print(f"Image shape: {x[0].shape}")
+print("Links")
+links[:10]
 
 # %%
 x, y = preprocess(x, y)
@@ -160,22 +169,6 @@ if viewer:
 viewer = napari.Viewer()
 viewer.add_image(x, name="image");
 
-
-# %% [markdown]
-# <div class="alert alert-block alert-danger"><h3>Important note for programming and debugging</h3>
-# Napari from within a jupyter notebook is nice, but seems to have a slight drawback:
-#
-# Whenever python throws an error, we need to run the following snippet to restore proper asynchronous execution.
-#     
-# TODO look into this!
-# </div>
-#
-# ```python
-# viewer = napari.viewer.current_viewer()
-# if viewer:
-#     viewer.close()
-# viewer = napari.Viewer()
-# ```
 
 # %% [markdown]
 # Let's add the ground truth annotations. Now we can easily explore how the cells move over time.
@@ -229,26 +222,22 @@ def visualize_divisions(viewer, y, links):
     ### YOUR CODE HERE ###
     divisions = np.zeros_like(y)
     viewer.add_labels(divisions, name="divisions")
-    pass
+    return divisions
 
 
 # %%
 # Exercise 1.1 solution
 def visualize_divisions(viewer, y, links):
     """Utility function to visualize divisions"""
-    divisions = links[links[:,3] != 0]
-    divisions_dict = defaultdict(list)
-    for d in divisions:
+    daughters = links[links[:,3] != 0]
+    divisions = np.zeros_like(y)
+
+    for d in daughters:
         if d[0] not in y or d[3] not in y:
             continue
-        divisions_dict[d[3]].append((d[0], d[1]))
-
-    layer = np.zeros_like(y)
-    for k, v in divisions_dict.items():
-        assert len(v) == 2
-        layer[v[0][1]] = (y[v[0][1]] == v[0][0]).astype(int) * v[0][0] + (y[v[0][1]] == v[1][0]).astype(int) * v[1][0]
-    
-    viewer.add_labels(layer, name="divisions")
+        divisions[d[1]][y[d[1]] == d[0]] = d[0]
+                
+    viewer.add_labels(divisions, name="divisions")
     return divisions
 
 
@@ -308,7 +297,7 @@ plt.show()
 # Detect centers and segment nuclei in all images of the time lapse.
 
 # %%
-scale = (1,1)
+scale = (0.5, 0.5)
 pred = [model.predict_instances(xi, show_tile_progress=False, scale=scale)
               for xi in tqdm(x)]
 detections = [xi[0] for xi in pred]
@@ -319,12 +308,12 @@ centers = [xi[1]["points"] for xi in pred]
 # Visualize the dense detections. They are still not linked.
 
 # %%
-try:
-    viewer.add_labels(detections, name=f"detections_scale_{scale}");
-except NameError:
-    viewer = napari.Viewer()
-    viewer.add_image(x)
-    viewer.add_labels(detections, name=f"detections_scale_{scale}");
+viewer = napari.viewer.current_viewer()
+if viewer:
+    viewer.close()
+viewer = napari.Viewer()
+viewer.add_image(x)
+viewer.add_labels(detections, name=f"detections_scale_{scale}");
 
 # %% [markdown]
 # We see that the number of detections increases over time, corresponding to the cells that insert the field of view from below during the video.
@@ -363,6 +352,12 @@ plt.show();
 # plt.figure(figsize=(5,5))
 # plt.title("Pairwise distance matrix")
 # plt.imshow(dist0);
+
+# %%
+# TODO given sets of points, get eucialidian distances
+
+# %%
+# Given toy matrix, do greedy iterative neareast neighbor
 
 # %% [markdown] tags=[]
 # ## Exercise 1.3
@@ -463,6 +458,9 @@ class FrameByFrameLinker(ABC):
                 
  
         """
+        
+        detections = detections.copy() 
+        
         assert len(detections) - 1 == len(links)
         self._assert_relabeled(detections[0])
         out = [detections[0]]
@@ -575,7 +573,7 @@ class NearestNeighborLinkerEuclidian(FrameByFrameLinker):
 
 
 # %%
-nn_linker = NearestNeighborLinkerEuclidian(threshold=30)
+nn_linker = NearestNeighborLinkerEuclidian(threshold=50) # TODO play with threshold
 nn_links = nn_linker.link(detections)
 nn_tracks = nn_linker.relabel_detections(detections, nn_links)
 
@@ -583,10 +581,9 @@ nn_tracks = nn_linker.relabel_detections(detections, nn_links)
 # Visualize results
 
 # %%
-try:
+viewer = napari.viewer.current_viewer()
+if viewer:
     viewer.close()
-except NameError:
-    pass
 viewer = napari.Viewer()
 viewer.add_image(x)
 viewer.add_labels(detections)
@@ -596,6 +593,14 @@ visualize_tracks(viewer, nn_tracks, name="nn");
 # %% [markdown]
 # ## Checkpoint 2
 # <div class="alert alert-block alert-success"><h3>Checkpoint 2: We have a working basic tracking algorithm :).</h3></div>
+
+# %%
+# TODO metrics
+# MOTA
+# FLASe div
+# false merges
+
+# ANalyse your results visually and quanti.!
 
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Exercise 1.3
@@ -649,18 +654,20 @@ class NearestNeighborLinkerDriftCorrection(NearestNeighborLinkerEuclidian):
 
 
 # %%
-drift_linker = NearestNeighborLinkerDriftCorrection(threshold=30, drift=(0, -10))
+drift_linker = NearestNeighborLinkerDriftCorrection(threshold=30, drift=(-15, 0))
 drift_links = drift_linker.link(detections)
 drift_tracks = drift_linker.relabel_detections(detections, drift_links)
+
+# %%
+# Optional: Estimate drift frame by frame?
 
 # %% [markdown]
 # Visualize results
 
 # %%
-try:
+viewer = napari.viewer.current_viewer()
+if viewer:
     viewer.close()
-except NameError:
-    pass
 viewer = napari.Viewer()
 viewer.add_image(x)
 visualize_tracks(viewer, drift_tracks, name="drift");
@@ -687,12 +694,13 @@ visualize_tracks(viewer, drift_tracks, name="drift");
 class BipartiteMatchingLinker(FrameByFrameLinker):
     """TODO make gaps for exercises"""
     
-    def __init__(self, threshold=sys.float_info.max, *args, **kwargs):
+    def __init__(self, threshold=sys.float_info.max, drift=(0,0), *args, **kwargs):
+        self.drift = np.array(drift)
         self.threshold = threshold
         super().__init__(*args, **kwargs)
-    
+        
     def linking_cost_function(self, detections0, detections1, image0=None, image1=None):
-        """ Get centroids from detections and compute pairwise euclidian distances.
+        """ Get centroids from detections and compute pairwise euclidian distances with drift correction.
                 
         Args:
         
@@ -714,7 +722,7 @@ class BipartiteMatchingLinker(FrameByFrameLinker):
         dists = []
         for c0 in centroids0:
             for c1 in centroids1:
-                dists.append(np.sqrt(((c0 - c1)**2).sum()))
+                dists.append(np.sqrt(((c0 + self.drift - c1)**2).sum()))
 
         dists = np.array(dists).reshape(len(centroids0), len(centroids1))
         
@@ -756,13 +764,17 @@ class BipartiteMatchingLinker(FrameByFrameLinker):
         cost_matrix = cost_matrix.copy().astype(float)
         # print(f"{cost_matrix=}")
         b = d = 1.05 * cost_matrix.max()
-        no_link = 1000
+        b = d = 1000000
+        # prob pf birth / death -> [inf, 0] 
+        no_link = b 
         # print(f"{b=}")
         cost_matrix[cost_matrix > self.threshold] = no_link
         lower_right = cost_matrix.transpose()
 
-        deaths = np.full(shape=(cost_matrix.shape[0], cost_matrix.shape[0]), fill_value=no_link) + (np.eye(cost_matrix.shape[0]) * (d - no_link))
-        births = np.full(shape=(cost_matrix.shape[1], cost_matrix.shape[1]), fill_value=no_link) + (np.eye(cost_matrix.shape[1]) * (b - no_link))
+        deaths = np.full(shape=(cost_matrix.shape[0], cost_matrix.shape[0]), fill_value=no_link)
+        np.fill_diagonal(deaths, d)
+        births = np.full(shape=(cost_matrix.shape[1], cost_matrix.shape[1]), fill_value=no_link)
+        np.fill_diagonal(births, b)
         
         square_cost_matrix = np.block([
             [cost_matrix, deaths],
@@ -781,16 +793,50 @@ class BipartiteMatchingLinker(FrameByFrameLinker):
             if row < cost_matrix.shape[0] and col < cost_matrix.shape[1]:
                 idx_from.append(row)
                 idx_to.append(col)
-    
+
+        idx_from = np.array(idx_from) 
+        idx_to = np.array(idx_to) 
+
+        true_matches = cost_matrix[idx_from, idx_to]<no_link
+        idx_from, idx_to = idx_from[true_matches], idx_to[true_matches]
+        
+        print(f'found {np.count_nonzero(~true_matches)} unlinked objects')
+                
         # Account for +1 offset of the dense labels
-        idx_from = np.array(idx_from) + 1
-        idx_to = np.array(idx_to) + 1
+        idx_from, idx_to = idx_from +1, idx_to + 1 
         
         return idx_from, idx_to
 
 
 # %%
-bm_linker = BipartiteMatchingLinker()
+cost_matrix = bm_linker.linking_cost_function(detections[0], detections[1])
+self = bm_linker
+cost_matrix = cost_matrix.copy().astype(float)
+# print(f"{cost_matrix=}")
+b = d = 1.05 * cost_matrix.max()
+b = d = 1000000
+# prob pf birth / death -> [inf, 0] 
+no_link = b
+# print(f"{b=}")
+cost_matrix[cost_matrix > self.threshold] = no_link
+lower_right = cost_matrix.transpose()
+
+deaths = np.full(shape=(cost_matrix.shape[0], cost_matrix.shape[0]), fill_value=no_link)
+np.fill_diagonal(deaths, d)
+births = np.full(shape=(cost_matrix.shape[1], cost_matrix.shape[1]), fill_value=no_link)
+np.fill_diagonal(births, b)
+square_cost_matrix = np.block([
+            [cost_matrix, deaths],
+            [births, lower_right],
+        ])
+
+# %%
+imshow(square_cost_matrix, vmax=100)
+cost_matrix.shape
+
+
+# %%
+bm_linker = BipartiteMatchingLinker(threshold=100, drift=(-15, 0))
 bm_links = bm_linker.link(detections)
 bm_tracks = bm_linker.relabel_detections(detections, bm_links)
 
@@ -798,10 +844,9 @@ bm_tracks = bm_linker.relabel_detections(detections, bm_links)
 # bm_links
 
 # %%
-try:
+viewer = napari.viewer.current_viewer()
+if viewer:
     viewer.close()
-except NameError:
-    pass
 viewer = napari.Viewer()
 viewer.add_image(x)
 visualize_tracks(viewer, bm_tracks, name="bm");
@@ -835,7 +880,6 @@ visualize_tracks(viewer, bm_tracks, name="bm");
 class YourLinker(BipartiteMatchingLinker):
     
     def __init__(self, *args, **kwargs):
-        self.threshold = threshold
         super().__init__(*args, **kwargs)
     
     def linking_cost_function(self, detections0, detections1, image0=None, image1=None):
@@ -859,3 +903,5 @@ class YourLinker(BipartiteMatchingLinker):
 your_linker = YourLinker()
 your_links = your_linker.link(detections)
 your_tracks = your_linker.relabel_detections(detections, your_links)
+
+# %%

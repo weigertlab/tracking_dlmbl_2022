@@ -1,9 +1,12 @@
 # Exercise 8 - Tracking
 
 ## Setup
+TODO:
+- Test napari launched from jupyter notebook in final environment on machines.
 
 1. CPU-only environment: `env_cpu.yml`.
 1. Environment with GPU support: `env_gpu.yml`. TODO test on course virtual machines.
+
 
 ## Exercises
 
