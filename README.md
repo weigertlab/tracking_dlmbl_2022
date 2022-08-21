@@ -18,7 +18,7 @@ TODO Test napari launched from jupyter notebook in final environment on machines
     - to use a robust pretrained deep-learning-based **object detection** algorithm called *StarDist*.
     - to implement a basic **nearest-neighbor** linking algorithm.
     - to compute optimal frame-by-frame linking by setting up a **bipartite matching problem** (also called *linear assignment problem (LAP)*) and using a python-based solver.
-    - to **evaluate the output** of a tracking algorithm against ground truth annotations.
+    - TODO to **evaluate the output** of a tracking algorithm against ground truth annotations.
     - to compute suitable object **features** for the object linking process with `scikit-image`.
 
 
