@@ -78,7 +78,7 @@ def preprocess(X, Y, axis_norm=(0,1)):
 # Let's download the dataset to your machine.
 
 # %%
-base_path = Path("~/data/celltracking/Fluo-N2DH-SIM+").expanduser()
+base_path = Path("~/data/celltracking/BF-C2DL-MuSC").expanduser()
 
 #if base_path.exists():
 #    print("Dataset already downloaded.")
@@ -87,16 +87,18 @@ base_path = Path("~/data/celltracking/Fluo-N2DH-SIM+").expanduser()
 # #    !unzip -q data/cancer_cell_migration.zip -d data
 
 # %%
-# offset = 100 - len(sorted((base_path/ "01").glob("*.tif")))
-x = np.stack([imread(str(p)) for p in sorted((base_path/ "01").glob("*.tif"))])
-y = np.stack([imread(str(p)) for p in sorted((base_path/ "01_GT"/ "TRA").glob("*.tif"))])
+last_n = 50
+offset = last_n - len(sorted((base_path/ "01").glob("*.tif")))
+x = np.stack([imread(str(p)) for p in sorted((base_path/ "01").glob("*.tif"))[-last_n:]])
+y = np.stack([imread(str(p)) for p in sorted((base_path/ "01_GT"/ "TRA").glob("*.tif"))[-last_n:]])
 assert len(x) == len(x)
 print(f"Number of images: {len(x)}")
 print(f"Image shape: {x[0].shape}")
 
 # %%
-x = x[:20, ...]
-y = y[:20, ...]
+x = x[-10:, 128:384, -384:-128]
+y = y[-10:, 128:384, -384:-128]
+offset -= 40
 
 print(f"Number of images: {len(x)}")
 print(f"Image shape: {x[0].shape}")
@@ -225,17 +227,15 @@ visualize_divisions(viewer, y, links.to_numpy());
 # ### Load a pretrained stardist model, detect nuclei in one image and visualize them.
 
 # %%
-noise = np.random.randn(*x.shape) * 0.5
-
-# %%
 idx = 0
 plot_img_label(x[idx], y[idx])
 
 # %% tags=[]
 idx = 0
-model = StarDist2D.from_pretrained("2D_versatile_fluo")
-detections, details = model.predict_instances(x[idx] + noise[idx], scale=(1, 1), nms_thresh=0.3, prob_thresh=0.5)
-plot_img_label(x[idx] + noise[idx], detections, lbl_title="detections")
+# model = StarDist2D.from_pretrained("2D_versatile_fluo")
+model = StarDist2D(None, name="BF-C2DL-MuSC", basedir="models")
+detections, details = model.predict_instances(x[idx], scale=(1, 1), nms_thresh=0.3, prob_thresh=0.5)
+plot_img_label(x[idx], detections, lbl_title="detections")
 
 # %% [markdown]
 # Here we visualize in detail the polygons we have detected with StarDist. TODO some description on how StarDist works.
@@ -307,6 +307,147 @@ plt.title(f"Number of detections in each frame (scale={scale})")
 plt.xticks(range(len(centers)))
 plt.show();
 
+# %%
+import cvxpy as cp
+def build_graph(detections):
+    G = nx.DiGraph()
+
+    # global id v_n-> (t, local_id)
+    # e = [v1, v2]
+
+    n_v = 0
+    
+    luts = []
+    for t, d in enumerate(detections):
+        frame = skimage.segmentation.relabel_sequential(d)[0]
+        regions = skimage.measure.regionprops(frame)
+        lut = {}
+        for r in regions:
+            G.add_node(n_v, time=t, detection_id=r.label, weight=1)
+            lut[r.label] = n_v
+            n_v += 1
+        luts.append(lut)
+
+    n_e = 0
+    for t, (d0, d1) in enumerate(zip(detections, detections[1:])):
+        f0 = skimage.segmentation.relabel_sequential(d0)[0]
+        r0 = skimage.measure.regionprops(f0)
+        c0 = [np.array(r.centroid) for r in r0]
+        # print(c0)
+
+        f1 = skimage.segmentation.relabel_sequential(d1)[0]
+        r1 = skimage.measure.regionprops(f1)
+        c1 = [np.array(r.centroid) for r in r1]
+        # print(c1)
+
+        for _r0, _c0 in zip(r0, c0):
+            for _r1, _c1 in zip(r1, c1):
+                G.add_edge(
+                    luts[t+1][_r1.label],
+                    luts[t][_r0.label],
+                    # normalized euclidian distance
+                    weight = np.linalg.norm(_c0 - _c1) / np.linalg.norm(detections[t].shape),
+                    edge_id = n_e,
+                )
+                n_e += 1
+    return G
+
+
+# %%
+def graph2ilp_nodiv(graph, hyperparams):
+    
+    # As (E x E + 3V)
+    # x (E + 3V) ce, c_v, c_va, c_vd
+    edge_to_idx = lambda x: {edge: i for i, edge in enumerate(graph.edges)}[x]
+    E = graph.number_of_edges()
+    V = graph.number_of_nodes()
+    x = cp.Variable(E + 3*V, boolean=True)
+    
+    c_e = hyperparams["edge_factor"] * np.array([graph.get_edge_data(*e)["weight"] for e in graph.edges])
+    # print(c_e)
+    c_v = hyperparams["node_offset"] + hyperparams["node_factor"] * np.array([v for k, v in sorted(dict(graph.nodes(data="weight")).items())])
+    # print(c_v)
+    c_va = np.ones(V) * hyperparams["cost_appear"]
+    c_vd = np.ones(V) * hyperparams["cost_disappear"]
+    c = np.concatenate([c_e, c_v, c_va, c_vd])
+    
+    A0 = np.zeros((E, E + 3 * V))
+    A0[:E, :E] = 2 * np.eye(E)
+    for edge in graph.edges:
+        edge_id = edge_to_idx(edge)
+        A0[edge_id, E + edge[0]] = -1
+        A0[edge_id, E + edge[1]] = -1
+    
+    # Appear continuation
+    A1 = np.zeros((V, E + 3 * V))
+    A1[:, E:E+V] = -np.eye(V)
+    A1[:, E+V:E+2*V] = np.eye(V)
+    
+    for node in graph.nodes:
+        out_edges = graph.out_edges(node)
+        for edge in out_edges:
+            # edge_id = graph.get_edge_data(*edge)["edge_id"]
+            edge_id = edge_to_idx(edge)
+            A1[node, edge_id] = 1
+     
+    # Disappear continuation
+    A2 = np.zeros((V, E + 3 * V))
+    A2[:, E:E+V] = np.eye(V)
+    A2[:, E+2*V:E+3*V] = - np.eye(V)
+    
+    for node in graph.nodes:
+        in_edges = graph.in_edges(node)
+        for edge in in_edges:
+            # edge_id = graph.get_edge_data(*edge)["edge_id"]
+            edge_id = edge_to_idx(edge)
+            A2[node, edge_id] = -1
+    
+    constraints = [
+        A0 @ x <= 0, 
+        A1 @ x == 0,
+        A2 @ x == 0,
+    ]
+    
+    
+    
+    # objective = cp.Minimize( c_v.T @ x_v + c_e.T @ x_e)
+    objective = cp.Minimize( c.T @ x)
+
+    
+    return cp.Problem(objective, constraints)
+
+def solution2graph(solution):
+    pass
+
+def graph2links(solution_graph):
+    # list of links, births, deaths
+    pass
+
+# TODO adapt visualizer
+
+
+# %%
+graph = build_graph(detections)
+ilp = graph2ilp_nodiv(graph, hyperparams={"cost_appear": 1, "cost_disappear": 1, "node_offset": 0, "node_factor": -1, "edge_factor": 1})
+
+# %%
+ilp.solve()
+print("Status: ", ilp.status)
+print("The optimal value is", ilp.value)
+print("A solution x_e is")
+E = graph.number_of_edges()
+V = graph.number_of_nodes()
+print(ilp.variables()[0].value[:E])
+print("A solution x_v is")
+print(ilp.variables()[0].value[E:E+V])
+print("A solution x_va is")
+print(ilp.variables()[0].value[E+V:E+2*V])
+print("A solution x_vd is")
+print(ilp.variables()[0].value[E+2*V:E+3*V])
+
+
+# %%
+# nx.draw(graph)
 
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Checkpoint 1
