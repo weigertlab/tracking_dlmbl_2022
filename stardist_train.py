@@ -31,15 +31,12 @@ from stardist.models import Config2D, StarDist2D, StarDistData2D
 np.random.seed(42)
 lbl_cmap = random_label_cmap()
 # -
+data_path = Path("/data/albert/ilp/BF-C2DL-MuSC")
 
+ids1 = [str(Path(fname).stem)[-4:] for fname in sorted(glob(str(data_path/ "01_ST/SEG"/ "*")))]
 
-
-# data_path = Path("/data/albert/ilp/BF-C2DL-MuSC")
-
-ids = [str(Path(fname).stem)[-4:] for fname in sorted(glob(str(data_path/ "01_GT/SEG"/ "*")))]
-
-X = [imread(Path(data_path/ "01"/ f"t{_id}.tif")) for _id in ids]
-Y = [imread(Path(data_path/ "01_GT"/ "SEG"/ f"man_seg{_id}.tif")) for _id in ids]
+X = [imread(Path(data_path/ "01"/ f"t{_id}.tif")) for _id in ids1]
+Y = [imread(Path(data_path/ "01_ST"/ "SEG"/ f"man_seg{_id}.tif")) for _id in ids1]
 
 assert all([x.shape == y.shape for x, y in zip(X, Y)]) and len(X) == len(Y)
 
@@ -93,6 +90,7 @@ conf = Config2D (
     grid         = grid,
     use_gpu      = use_gpu,
     n_channel_in = n_channel,
+    train_epochs = 100
 )
 print(conf)
 vars(conf)
@@ -105,7 +103,7 @@ if use_gpu:
     # alternatively, try this:
     # limit_gpu_memory(None, allow_growth=True)
 
-model = StarDist2D(conf, name='stardist', basedir='models')
+model = StarDist2D(conf, name='BF-C2DL-MuSC', basedir='models')
 
 median_size = calculate_extents(list(Y), np.median)
 fov = np.array(model._axes_tile_overlap('YX'))
