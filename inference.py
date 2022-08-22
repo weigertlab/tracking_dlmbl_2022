@@ -1,16 +1,16 @@
 # ---
 # jupyter:
 #   jupytext:
-#     formats: ipynb,py:percent
+#     formats: py:percent,ipynb
 #     text_representation:
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
 #       jupytext_version: 1.14.1
 #   kernelspec:
-#     display_name: ilp
+#     display_name: Python 3 (ipykernel)
 #     language: python
-#     name: ilp
+#     name: python3
 # ---
 
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
@@ -39,14 +39,7 @@ from stardist.plot import render_label
 from stardist.models import StarDist2D
 from stardist import _draw_polygons
 from csbdeep.utils import normalize
-
-# Not needed in newer version anymore
-# To interact with napari viewer from within a notebook
-# import nest_asyncio
-# nest_asyncio.apply()
-
 import numpy as np
-
 
 import napari
 
@@ -85,7 +78,7 @@ def preprocess(X, Y, axis_norm=(0,1)):
 # Let's download the dataset to your machine.
 
 # %%
-base_path = Path("/data/albert/ilp/BF-C2DL-MuSC")
+base_path = Path("~/data/celltracking/Fluo-N2DH-SIM+").expanduser()
 
 #if base_path.exists():
 #    print("Dataset already downloaded.")
@@ -94,16 +87,20 @@ base_path = Path("/data/albert/ilp/BF-C2DL-MuSC")
 # #    !unzip -q data/cancer_cell_migration.zip -d data
 
 # %%
-X = [normalize(imread(str(p))[128:3*128,-384:-128], 1, 99.8) for p in sorted((base_path/ "01").glob("*.tif"))[-100:]]
-Y = [imread(str(p))[128:3*128,-384:-128] for p in sorted((base_path/ "01_GT"/ "TRA").glob("*.tif"))[-100:]]
-assert len(X) == len(Y)
-print(f"Number of images: {len(X)}")
-print(f"Image shape: {X[0].shape}")
+# offset = 100 - len(sorted((base_path/ "01").glob("*.tif")))
+x = np.stack([imread(str(p)) for p in sorted((base_path/ "01").glob("*.tif"))])
+y = np.stack([imread(str(p)) for p in sorted((base_path/ "01_GT"/ "TRA").glob("*.tif"))])
+assert len(x) == len(x)
+print(f"Number of images: {len(x)}")
+print(f"Image shape: {x[0].shape}")
 
 # %%
-axis_norm = (0,1)   # normalize channels independently
-X = [normalize(x,1,99.8,axis=axis_norm) for x in tqdm(X)]
-Y = [fill_label_holes(y) for y in tqdm(Y)]
+x = x[:20, ...]
+y = y[:20, ...]
+
+print(f"Number of images: {len(x)}")
+print(f"Image shape: {x[0].shape}")
+x, y = preprocess(x, y)
 
 # %% [markdown]
 # Load the dataset (images and tracking annotations) from disk into this notebook.
@@ -111,6 +108,8 @@ Y = [fill_label_holes(y) for y in tqdm(Y)]
 # %%
 links = pd.read_csv(base_path / "01_GT" / "TRA"/ "man_track.txt", names=["track_id", "from", "to", "parent_id"], sep=" ")
 print("Links")
+links["from"] = links["from"] + offset
+links["to"] = links["to"] + offset
 links[:10]
 
 # %% [markdown]
@@ -121,7 +120,7 @@ links[:10]
 
 # %%
 idx = 0
-plot_img_label(X[idx], Y[idx])
+plot_img_label(x[idx], y[idx])
 
 # %% [markdown]
 # This is ok to take a glimpse, but a dynamic viewer would be much better. Let's use [napari](https://napari.org/tutorials/fundamentals/getting_started.html) for this.
@@ -201,6 +200,7 @@ visualize_tracks(viewer, y, links.to_numpy(), "ground_truth");
 
 # %%
 # Solution Exercise 1.1
+# TODO update to check for two daughter cells.
 def visualize_divisions(viewer, y, links):
     """Utility function to visualize divisions"""
     daughters = links[links[:,3] != 0]
@@ -224,16 +224,23 @@ visualize_divisions(viewer, y, links.to_numpy());
 # %% [markdown] tags=[]
 # ### Load a pretrained stardist model, detect nuclei in one image and visualize them.
 
+# %%
+noise = np.random.randn(*x.shape) * 0.5
+
+# %%
+idx = 0
+plot_img_label(x[idx], y[idx])
+
 # %% tags=[]
 idx = 0
 model = StarDist2D.from_pretrained("2D_versatile_fluo")
-detections, details = model.predict_instances(x[idx], scale=(1,1))
-plot_img_label(x[idx], detections, lbl_title="detections")
+detections, details = model.predict_instances(x[idx] + noise[idx], scale=(1, 1), nms_thresh=0.3, prob_thresh=0.5)
+plot_img_label(x[idx] + noise[idx], detections, lbl_title="detections")
 
 # %% [markdown]
 # Here we visualize in detail the polygons we have detected with StarDist. TODO some description on how StarDist works.
 #
-# <!-- Notice that each object comes with a center point, which we can use to compute pairwise euclidian distances between objects. -->
+# <!-- Notice that each object comes with a center point, which we can use to comnms_thresh=ise eprob_thresh= distances between objects. -->
 
 # %%
 coord, points, prob = details['coord'], details['points'], details['prob']
@@ -269,8 +276,10 @@ plt.show()
 # Detect centers and segment nuclei in all images of the time lapse.
 
 # %%
+prob_thres = 0.5
+nms_thres = 0.5
 scale = (1.0, 1.0)
-pred = [model.predict_instances(xi, show_tile_progress=False, scale=scale)
+pred = [model.predict_instances(xi, show_tile_progress=False, scale=scale, nms_thresh=nms_thres, prob_thresh=prob_thres)
               for xi in tqdm(x)]
 detections = [xi[0] for xi in pred]
 detections = np.stack([skimage.segmentation.relabel_sequential(d)[0] for d in detections])  # ensure that label ids are contiguous and start at 1 for each frame 
@@ -285,7 +294,8 @@ if viewer:
     viewer.close()
 viewer = napari.Viewer()
 viewer.add_image(x)
-viewer.add_labels(detections, name=f"detections_scale_{scale}");
+visualize_tracks(viewer, y, links.to_numpy(), "ground_truth");
+viewer.add_labels(detections, name=f"detections_scale_{scale}_nmsthres_{nms_thres}");
 
 # %% [markdown]
 # We see that the number of detections increases over time, corresponding to the cells that insert the field of view from below during the video.
