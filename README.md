@@ -4,7 +4,7 @@
 TODO Test napari launched from jupyter notebook in final environment on machines.
 
 1. CPU-only environment: `env_cpu.yml`.
-1. TODO optional: Environment with GPU support: `env_gpu.yml`.
+1. TODO optional: Environment with GPU support: `env_gpu.yml`. TODO update for exercise3.
 
 
 ## Exercises
@@ -24,17 +24,20 @@ TODO Test napari launched from jupyter notebook in final environment on machines
 
 2. Tracking with two-step Linear Assignment Problem (LAP)
 
-    Here we will build upon the tracking algorithm introduced in exercise 1 by using a linking algorithm that considers more than two frames at a time in a second optimization step.
+    Here we will use an extended version of the tracking algorithm introduced in exercise 1 which uses a linking algorithm that considers more than two frames at a time in a second optimization step.
     
     You will learn
-    - TODO how this formulation addresses **typical challenges of tracking in bioimages**, like cell division and objects temporarily going out of focus.
+    - how this formulation addresses **typical challenges of tracking in bioimages**, like cell division and objects temporarily going out of focus.
     - how to use **Trackmate**, a versatile ready-to-go implementation of two-step LAP tracking in ImageJ/Fiji.
 
-3. TODO Advanced topics 
 
-    Here we will introduce more advanced formulations of tracking.
+
     
+3. Tracking with n integer linear program (ILP)
+
+    Here we will introduce an advanced formulation of tracking.
+
     You will learn
-    - (to predict costs with a deep learning approach.)
-    - to formulate an **integer linear program (ILP)** to find a global optimum solution for small-scale tracking problems with `cvxopt/linajea`.
-    - (to set up a **network flow** using `networkx`, which allows to find a global optimum solution for small-scale problems, but without modeling cell divisions.)
+    - how linking can be modeled as an **integer linear program (ILP)** with global context for a small-scale tracking problem using `networkx` and `cvxpy` (Exercise 3.1).
+    - to extend the ILP to properly model cell divisions (Exercise 3.2).
+    - to tune the hyperparameters of the ILP (Exercise 3.3).

@@ -18,7 +18,7 @@
 #
 # You could also run this notebook on your laptop, a GPU is not needed :).
 #
-# Here we will introduce more advanced formulations of tracking.
+# Here we will introduce a more advanced formulation of tracking.
 #     
 # You will learn
 # - how linking can be modeled as an **integer linear program (ILP)** with global context for a small-scale tracking problem using `networkx` and `cvxpy` (Exercise 3.1).
