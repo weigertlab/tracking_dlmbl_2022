@@ -33,7 +33,7 @@ TODO Test napari launched from jupyter notebook in final environment on machines
 
 
     
-3. Tracking with n integer linear program (ILP)
+3. Tracking with an integer linear program (ILP)
 
     Here we will introduce an advanced formulation of tracking.
 
