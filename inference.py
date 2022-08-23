@@ -40,6 +40,7 @@ from stardist.models import StarDist2D
 from stardist import _draw_polygons
 from csbdeep.utils import normalize
 import numpy as np
+import networkx as nx
 import cvxpy as cp
 
 import napari
@@ -363,7 +364,7 @@ def build_graph_from_tracks(detections, links=None):
                     # print(d)
                     # print("Can't find parent in previous frame (cropping, disappearing tracks).")
     
-    return G, draw_positions
+    return G, draw_positions, luts
 
 
 # %%
@@ -382,11 +383,52 @@ def draw_graph(g, pos=None, title=None):
 
 
 # %%
-gt_graph, gt_pos = build_graph_from_tracks(y, links.to_numpy())
+gt_graph, gt_pos, gt_luts = build_graph_from_tracks(y, links.to_numpy())
 draw_graph(gt_graph, gt_pos, "Ground truth graph")
 
+
 # %%
-graph, draw_pos = build_graph(detections, max_distance=50)
+def recolor_detections(viewer, detections, graph, node_luts):
+    """TODO cleanup"""
+    assert len(detections) == len(node_luts)
+    
+    out = []
+    n_tracks = 1
+    color_lookup_tables = []
+    
+    for t in tqdm(range(0, len(detections)), desc="Recoloring detections"):
+        # print(f"Time {t}")
+        new_frame = np.zeros_like(detections[t])
+        color_lut = {}
+        for det_id, node_id in node_luts[t].items():
+            # print(node_id)
+            edges = graph.out_edges(node_id)
+            if not edges:
+                new_frame[detections[t] == graph.nodes[node_id]["detection_id"]] = n_tracks
+                color_lut[graph.nodes[node_id]["detection_id"]] = n_tracks
+                # print("new node")
+                # print(color_lut)
+                n_tracks += 1
+            else:
+                for u_t0, v_tm1 in edges:
+                    new_frame[detections[t] == graph.nodes[u_t0]["detection_id"]] = color_lookup_tables[t-1][graph.nodes[v_tm1]["detection_id"]]
+                    color_lut[graph.nodes[u_t0]["detection_id"]] = color_lookup_tables[t-1][graph.nodes[v_tm1]["detection_id"]]
+                    # print(color_lut)
+                
+        color_lookup_tables.append(color_lut)
+        out.append(new_frame)
+        
+
+    return np.stack(out)
+
+# %%
+recolored_gt = recolor_detections(viewer, y, gt_graph, gt_luts)
+
+# %%
+viewer.add_labels(recolored_gt)
+
+# %%
+graph, draw_pos  = build_graph(detections, max_distance=50)
 draw_graph(graph, draw_pos, "Candidate graph")
 
 
@@ -610,170 +652,6 @@ draw_graph(solved_graph_div, None, f"ILP Solution (with divisions) - Optimal cos
 # nx.draw(graph)
 
 # %%
-class FrameByFrameLinker(ABC):
-    """Abstract base class for linking detections by considering pairs of adjacent frames."""
-    
-    def link(self, detections, images=None):
-        """Links detections in t frames.
-        
-        Args:
-        
-            detections:
-            
-                List of t numpy arrays of shape (x,y) with contiguous label ids. Background = 0.
-                
-            images (optional):
-            
-                List of t numpy arrays of shape (x,y).
-        
-        Returns:
-        
-            List of t linking dictionaries, each containing:
-                "links": Tuple of lists (ids frame t, ids frame t+1),
-                "births": List of ids,
-                "deaths": List of ids.
-            Ids are one-based, 0 is reserved for background.
-        """
-        if images is not None:
-            assert len(images) == len(detections)
-        else:
-            images = [None] * len(detections)
-
-        links = []
-        for i in tqdm(range(len(images) - 1), desc="Linking"):
-            detections0 = detections[i]
-            detections1 = detections[i+1]
-            self._assert_relabeled(detections0)
-            self._assert_relabeled(detections1)
-            
-            cost_matrix = self.linking_cost_function(detections0, detections1, images[i], images[i+1])
-            li = self._link_two_frames(cost_matrix)
-            self._assert_links(links=li, time=i, detections0=detections0, detections1=detections1) 
-            links.append(li)
-            
-        return links
-
-    @abstractmethod
-    def linking_cost_function(self, detections0, detections1, image0=None, image1=None):
-        """Calculate features for each detection and extract pairwise costs.
-        
-        To be overwritten in subclass.
-        
-        Args:
-        
-            detections0: image with background 0 and detections 1, ..., m
-            detections1: image with backgruond 0 and detections 1, ..., n
-            image0 (optional): image corresponding to detections0
-            image1 (optional): image corresponding to detections1
-            
-        Returns:
-        
-            m x n cost matrix 
-        """
-        pass
-    
-    @abstractmethod
-    def _link_two_frames(self, cost_matrix):
-        """Link two frames.
-        
-        To be overwritten in subclass.
-
-        Args:
-
-            cost_matrix: m x n matrix
-
-        Returns:
-        
-            Linking dictionary:
-                "links": Tuple of lists (ids frame t, ids frame t+1),
-                "births": List of ids,
-                "deaths": List of ids.
-            Ids are one-based, 0 is reserved for background.
-        """
-        pass
-
-    def relabel_detections(self, detections, links):
-        """Relabel dense detections according to computed links, births and deaths.
-        
-        Args:
-        
-            detections: 
-                 
-                 List of t numpy arrays of shape (x,y) with contiguous label ids. Background = 0.
-                 
-            links:
-                
-                List of t linking dictionaries, each containing:
-                    "links": Tuple of lists (ids frame t, ids frame t+1),
-                    "births": List of ids,
-                    "deaths": List of ids.
-                Ids are one-based, 0 is reserved for background.
-        """
-        detections = detections.copy()
-        
-        assert len(detections) - 1 == len(links)
-        self._assert_relabeled(detections[0])
-        out = [detections[0]]
-        n_tracks = out[0].max()
-        lookup_tables = [{i: i for i in range(1, out[0].max() + 1)}]
-
-        for i in tqdm(range(len(links)), desc="Recoloring detections"):
-            (ids_from, ids_to) = links[i]["links"]
-            births = links[i]["births"]
-            deaths = links[i+1]["deaths"] if i+1 < len(links) else []
-            new_frame = np.zeros_like(detections[i+1])
-            self._assert_relabeled(detections[i+1])
-            
-            lut = {}
-            for _from, _to in zip(ids_from, ids_to):
-                # Copy over ID
-                new_frame[detections[i+1] == _to] = lookup_tables[i][_from]
-                lut[_to] = lookup_tables[i][_from]
-
-            
-            # Start new track for birth tracks
-            for b in births:
-                if b in deaths:
-                    continue
-                
-                n_tracks += 1
-                lut[b] = n_tracks
-                new_frame[detections[i+1] == b] = n_tracks
-                
-            # print(lut)
-            lookup_tables.append(lut)
-            out.append(new_frame)
-                
-        return np.stack(out)
-
-    def _assert_links(self, links, time, detections0, detections1):
-        if len(links["links"][0]) != len(links["links"][1]):
-            raise RuntimeError("Format of links['links'] not correct.")
-            
-        if sorted([*links["links"][0], *links["deaths"]]) != list(range(1, len(np.unique(detections0)))):
-            raise RuntimeError(f"Some detections in frame {time} are not properly assigned as either linked or death.")
-            
-        if sorted([*links["links"][1], *links["births"]]) != list(range(1, len(np.unique(detections1)))):
-            raise RuntimeError(f"Some detections in frame {time + 1} are not properly assigned as either linked or birth.")
-            
-        for b in links["births"]:
-            if b in links["links"][1]:
-                raise RuntimeError(f"Links frame {time+1}: Detection {b} marked as birth, but also linked.")
-        
-        for d in links["deaths"]:
-            if d in links["links"][0]:
-                raise RuntimeError(f"Links frame {time}: Detection {d} marked as death, but also linked.")
-        
-        
-    def _assert_relabeled(self, x):
-        if x.min() < 0:
-            raise ValueError("Negative ID in detections.")
-        if x.min() == 0:
-            n = x.max() + 1
-        else:
-            n = x.max()
-        if n != len(np.unique(x)):
-            raise ValueError("Detection IDs are not contiguous.")
 
 # %%
 # TODO metrics
