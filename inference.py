@@ -8,9 +8,9 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.14.1
 #   kernelspec:
-#     display_name: ilp
+#     display_name: Python 3 (ipykernel)
 #     language: python
-#     name: ilp
+#     name: python3
 # ---
 
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
@@ -187,12 +187,15 @@ visualize_tracks(viewer, y, links.to_numpy(), "ground_truth");
 idx = 0
 plot_img_label(x[idx], y[idx])
 
-# %% tags=[]
+# %%
 idx = 0
 # model = StarDist2D.from_pretrained("2D_versatile_fluo")
 model = StarDist2D(None, name="BF-C2DL-MuSC", basedir="models")
-detections, details = model.predict_instances(x[idx], scale=(1, 1), nms_thresh=0.3, prob_thresh=0.5)
+(detections, details), (prob, _) = model.predict_instances(x[idx], scale=(1, 1), nms_thresh=0.3, prob_thresh=0.3, return_predict=True)
 plot_img_label(x[idx], detections, lbl_title="detections")
+
+# %%
+polygon_prob
 
 # %% [markdown]
 # Here we visualize in detail the polygons we have detected with StarDist. TODO some description on how StarDist works.
@@ -200,11 +203,11 @@ plot_img_label(x[idx], detections, lbl_title="detections")
 # <!-- Notice that each object comes with a center point, which we can use to comnms_thresh=ise eprob_thresh= distances between objects. -->
 
 # %%
-coord, points, prob = details['coord'], details['points'], details['prob']
+coord, points, polygon_prob = details['coord'], details['points'], details['prob']
 plt.figure(figsize=(20,20))
 plt.subplot(211)
 plt.title("Predicted Polygons")
-_draw_polygons(coord, points, prob, show_dist=True)
+_draw_polygons(coord, points, polygon_prob, show_dist=True)
 plt.imshow(x[idx], cmap='gray'); plt.axis('off')
 
 # plt.subplot(312)
@@ -214,7 +217,7 @@ plt.imshow(x[idx], cmap='gray'); plt.axis('off')
 
 plt.subplot(212)
 plt.title("Object center probability")
-plt.imshow(x[idx], cmap='magma'); plt.axis('off')
+plt.imshow(prob, cmap='magma'); plt.axis('off')
 plt.tight_layout()
 plt.show() 
 
@@ -226,11 +229,13 @@ plt.show()
 prob_thres = 0.3
 nms_thres = 0.3
 scale = (1.0, 1.0)
-pred = [model.predict_instances(xi, show_tile_progress=False, scale=scale, nms_thresh=nms_thres, prob_thresh=prob_thres)
+pred = [model.predict_instances(xi, show_tile_progress=False, scale=scale, nms_thresh=nms_thres, prob_thresh=prob_thres, return_predict=True)
               for xi in tqdm(x)]
-detections = [xi[0] for xi in pred]
-detections = np.stack([skimage.segmentation.relabel_sequential(d)[0] for d in detections])  # ensure that label ids are contiguous and start at 1 for each frame 
-centers = [xi[1]["points"] for xi in pred]
+detections = [xi[0][0] for xi in pred]
+# detections = np.stack([skimage.segmentation.relabel_sequential(d)[0] for d in detections])  # ensure that label ids are contiguous and start at 1 for each frame 
+centers = [xi[0][1]["points"] for xi in pred]
+center_probs = [xi[0][1]["prob"] for xi in pred]
+prob_maps = np.stack([xi[1][0] for xi in pred])
 
 # %% [markdown]
 # Visualize the dense detections. Note that they are still not linked and therefore randomly colored.
@@ -256,8 +261,11 @@ plt.show();
 
 
 # %%
-def build_graph(detections, max_distance=np.finfo(float).max):
-    """TODO cleanup"""
+def build_graph(detections, max_distance=np.finfo(float).max, detection_probs=None):
+    """TODO cleanup
+    
+        detection_probs: list of arrays, corresponding to ordered ids in detections.
+    """
     G = nx.DiGraph()
     # e = [v0, v1]
 
@@ -270,9 +278,10 @@ def build_graph(detections, max_distance=np.finfo(float).max):
         frame = skimage.segmentation.relabel_sequential(d)[0]
         regions = skimage.measure.regionprops(frame)
         lut = {}
-        for r in regions:
+        for i, r in enumerate(regions):
             draw_pos = np.array([t, d.shape[0] - r.centroid[0]])
-            G.add_node(n_v, time=t, detection_id=r.label, weight=1, draw_position=draw_pos)
+            weight = detection_probs[t][i] if detection_probs else 1
+            G.add_node(n_v, time=t, detection_id=r.label, weight=weight, draw_position=draw_pos)
             draw_positions[n_v] = draw_pos
             lut[r.label] = n_v
             n_v += 1
@@ -303,7 +312,7 @@ def build_graph(detections, max_distance=np.finfo(float).max):
                     )
                     n_e += 1
     
-    return G, draw_positions
+    return G, luts
 
 
 # %%
@@ -364,13 +373,12 @@ def build_graph_from_tracks(detections, links=None):
                     # print(d)
                     # print("Can't find parent in previous frame (cropping, disappearing tracks).")
     
-    return G, draw_positions, luts
+    return G, luts
 
 
 # %%
-def draw_graph(g, pos=None, title=None):
-    if pos is None: # retrieve from node features
-        pos = {i: g.nodes[i]["draw_position"] for i in g.nodes}
+def draw_graph(g, title=None):
+    pos = {i: g.nodes[i]["draw_position"] for i in g.nodes}
     fig, ax = plt.subplots()
     plt.title(title)
     nx.draw(g, pos=pos, with_labels=True, ax=ax)
@@ -383,12 +391,12 @@ def draw_graph(g, pos=None, title=None):
 
 
 # %%
-gt_graph, gt_pos, gt_luts = build_graph_from_tracks(y, links.to_numpy())
-draw_graph(gt_graph, gt_pos, "Ground truth graph")
+gt_graph, gt_luts = build_graph_from_tracks(y, links.to_numpy())
+draw_graph(gt_graph, "Ground truth graph")
 
 
 # %%
-def recolor_detections(viewer, detections, graph, node_luts):
+def recolor_detections(detections, graph, node_luts):
     """TODO cleanup"""
     assert len(detections) == len(node_luts)
     
@@ -401,6 +409,8 @@ def recolor_detections(viewer, detections, graph, node_luts):
         new_frame = np.zeros_like(detections[t])
         color_lut = {}
         for det_id, node_id in node_luts[t].items():
+            if node_id not in graph.nodes:
+                continue
             # print(node_id)
             edges = graph.out_edges(node_id)
             if not edges:
@@ -422,14 +432,23 @@ def recolor_detections(viewer, detections, graph, node_luts):
     return np.stack(out)
 
 # %%
-recolored_gt = recolor_detections(viewer, y, gt_graph, gt_luts)
+det_solved_nodiv = recolor_detections(detections=detections, graph=solved_graph_nodiv, node_luts=candidate_luts)
+
+# %%
+viewer.add_labels(det_solved_nodiv)
+
+# %%
+recolored_gt = recolor_detections(y, gt_graph, gt_luts)
+
+# %%
+len(gt_luts)
 
 # %%
 viewer.add_labels(recolored_gt)
 
 # %%
-graph, draw_pos  = build_graph(detections, max_distance=50)
-draw_graph(graph, draw_pos, "Candidate graph")
+candidate_graph, candidate_luts  = build_graph(detections, max_distance=50, detection_probs=center_probs)
+draw_graph(candidate_graph, "Candidate graph")
 
 
 # %%
@@ -449,7 +468,7 @@ def graph2ilp_nodiv(graph, hyperparams):
     c = np.concatenate([c_e, c_v, c_va, c_vd])
     
     # constraint matrices: {E or V} x (E + 3V)
-    # columns: ce, c_v, c_va, c_vd
+    # columns: c_e, c_v, c_va, c_vd
     
     A0 = np.zeros((E, E + 3 * V))
     A0[:E, :E] = 2 * np.eye(E)
@@ -495,15 +514,22 @@ def graph2ilp_nodiv(graph, hyperparams):
     return cp.Problem(objective, constraints)
 
 # %%
-ilp_nodiv = graph2ilp_nodiv(graph, hyperparams={"cost_appear": 1, "cost_disappear": 1, "node_offset": 0, "node_factor": -1, "edge_factor": 1})
+ilp_nodiv = graph2ilp_nodiv(candidate_graph, hyperparams={"cost_appear": 1, "cost_disappear": 1, "node_offset": 0, "node_factor": -1, "edge_factor": 1})
+
+# %% [markdown]
+# ## Exercise 3.x
+# <div class="alert alert-block alert-info"><h3>Exercise 3.x: This non-div ILP has wrong hyperparameters. Fix them to get a non-trivial solution (Pick a subset of candidate nodes and candidate edges.</h3>
+#
+# following the formulation from Malin-Mayor, Caroline, et al. "Automated reconstruction of whole-embryo cell lineages by learning from sparse annotations." bioRxiv (2021).
+# </div>
 
 # %%
 ilp_nodiv.solve()
 print("ILP Status: ", ilp_nodiv.status)
 print("The optimal value is", ilp_nodiv.value)
 print("x_e")
-E = graph.number_of_edges()
-V = graph.number_of_nodes()
+E = candidate_graph.number_of_edges()
+V = candidate_graph.number_of_nodes()
 print(ilp_nodiv.variables()[0].value[:E])
 print("x_v")
 print(ilp_nodiv.variables()[0].value[E:E+V])
@@ -512,6 +538,17 @@ print(ilp_nodiv.variables()[0].value[E+V:E+2*V])
 print("x_vd")
 print(ilp_nodiv.variables()[0].value[E+2*V:E+3*V])
 
+
+# %% [markdown]
+# ## Exercise 3.x
+# <div class="alert alert-block alert-info"><h3>Exercise 3.x: Adapt the ILP from above to allow for divisions</h3>
+#
+# Note: Constraint A2 changes from equality to inequality
+#     
+# Add constraint A3 (split constraint) to make sure a division leads to maximum two daughter cells. Why is this needed?
+#     
+# following the formulation from Malin-Mayor, Caroline, et al. "Automated reconstruction of whole-embryo cell lineages by learning from sparse annotations." bioRxiv (2021).
+# </div>
 
 # %%
 def graph2ilp_div(graph, hyperparams):
@@ -588,15 +625,21 @@ def graph2ilp_div(graph, hyperparams):
     return cp.Problem(objective, constraints)
 
 # %%
-ilp_div = graph2ilp_div(graph, hyperparams={"cost_appear": 1, "cost_disappear": 1, "node_offset": 0, "node_factor": -1, "edge_factor": 1})
+# A [0.5,1]
+# D [0.5, 1]
+# node_offset [-1, 1]
+# node_factor [-2, 0)
+# edge_factor [0.5, 2]
+# ilp_div = graph2ilp_div(candidate_graph, hyperparams={"cost_appear": .5, "cost_disappear": .5, "node_offset": 0.5, "node_factor": -1, "edge_factor": 1.5})
+ilp_div = graph2ilp_div(candidate_graph, hyperparams={"cost_appear": 1, "cost_disappear": 1, "node_offset": 0, "node_factor": -1, "edge_factor": 1})
 
 # %%
 ilp_div.solve()
 print("ILP Status: ", ilp_div.status)
 print("The optimal value is", ilp_div.value)
 print("x_e")
-E = graph.number_of_edges()
-V = graph.number_of_nodes()
+E = candidate_graph.number_of_edges()
+V = candidate_graph.number_of_nodes()
 print(ilp_div.variables()[0].value[:E])
 print("x_v")
 print(ilp_div.variables()[0].value[E:E+V])
@@ -627,31 +670,32 @@ def solution2graph(solution, base_graph):
     for edge in picked_edges:
         new_graph.add_edge(*original_edges[edge])
     return new_graph
-        
-
-def graph2links(solution_graph):
-    # list of links, births, deaths
-    pass
-
-# TODO adapt visualizer
 
 
 # %%
-solved_graph_nodiv = solution2graph(ilp_nodiv, graph)
-solved_graph_div = solution2graph(ilp_div, graph)
+solved_graph_nodiv = solution2graph(ilp_nodiv, candidate_graph)
+solved_graph_div = solution2graph(ilp_div, candidate_graph)
 
 # %%
-draw_graph(solved_graph_nodiv, None, f"ILP Solution (without divisions) - Optimal cost: {ilp_nodiv.value:.3f}")
-draw_graph(solved_graph_div, None, f"ILP Solution (with divisions) - Optimal cost: {ilp_div.value:.3f}")
-
+det_solved_div = recolor_detections(detections=detections, graph=solved_graph_div, node_luts=candidate_luts)
 
 # %%
-# TODO some tests for the students
+viewer = napari.viewer.current_viewer()
+if viewer:
+    viewer.close()
+viewer = napari.Viewer()
+viewer.add_image(x)
+visualize_tracks(viewer, y)
+viewer.add_labels(detections)
+viewer.add_labels(det_solved_div)
+viewer.add_image(prob_maps, colormap="magma", scale=(2,2))
 
 # %%
-# nx.draw(graph)
+draw_graph(gt_graph, "Ground truth")
+draw_graph(candidate_graph, "Candidate Graph")
+draw_graph(solved_graph_nodiv,  f"ILP Solution (without divisions) - Optimal cost: {ilp_nodiv.value:.3f}")
+draw_graph(solved_graph_div, f"ILP Solution (with divisions) - Optimal cost: {ilp_div.value:.3f}")
 
-# %%
 
 # %%
 # TODO metrics
@@ -660,5 +704,14 @@ draw_graph(solved_graph_div, None, f"ILP Solution (with divisions) - Optimal cos
 # False merges
 
 # Analyse your results visually and quantitatively
+
+# %% [markdown]
+# ## Exercise 3.x
+# <div class="alert alert-block alert-info"><h3>Exercise 3.x: Improve tracking and compare with metrics</h3>
+#
+# - Tune the detection algorithm to avoid false negatives.
+# - Tune the hyperparameters of the full ILP.
+#     
+# </div>
 
 # %%
