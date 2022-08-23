@@ -116,8 +116,10 @@ print(f"Number of images: {len(x)}")
 print(f"Image shape: {x[0].shape}")
 
 # %%
-x = x[:10, 128:384, -384:-128]
-y = y[:10, 128:384, -384:-128]
+x = x[:10, 128:384, -320:-64]
+y = y[:10, 128:384, -320:-64]
+# x = x[53:, 600:856, 600:856]
+# y = y[53:, 600:856, 600:856]
 offset -= 0
 
 print(f"Number of images: {len(x)}")
@@ -148,6 +150,9 @@ plot_img_label(x[idx], y[idx])
 # This is ok to take a glimpse, but a dynamic viewer would be much better. Let's use [napari](https://napari.org/tutorials/fundamentals/getting_started.html) for this.
 
 # %%
+viewer = napari.viewer.current_viewer()
+if viewer:
+    viewer.close()
 viewer = napari.Viewer()
 viewer.add_image(x, name="image");
 
@@ -479,6 +484,151 @@ def graph2ilp_nodiv(graph, hyperparams):
     
     return cp.Problem(objective, constraints)
 
+
+# %%
+def graph2ilp_flow(graph, hyperparams):
+    """TODO cleanup"""
+    
+    graph_flow = nx.DiGraph()
+    graph_flow.add_node("appear", weight=0)
+    graph_flow.add_node("death", weight=0)
+    
+    for n, time in graph.nodes(data="time"):
+        if time == 0:
+            graph_flow.add_node(n, weight=0)
+            graph_flow.add_edge(n, "appear", weight=0)
+        elif time == len(detections) - 1:
+            graph_flow.add_node(n, weight=0)
+            graph_flow.add_edge("death", n, weight=0)
+    
+    E_flow = graph_flow.number_of_edges()
+    
+    edge_to_idx = {edge: i for i, edge in enumerate(graph.edges)}
+    edge_to_idx_flow = {edge: i for i, edge in enumerate(graph_flow.edges)}
+
+    print(edge_to_idx)
+    E = graph.number_of_edges()
+    V = graph.number_of_nodes()
+    x = cp.Variable(E + V + E_flow, boolean=True)
+    
+    c_e = hyperparams["edge_factor"] * np.array([graph.get_edge_data(*e)["weight"] for e in graph.edges])
+    # print(c_e)
+    c_v = hyperparams["node_offset"] + hyperparams["node_factor"] * np.array([v for k, v in graph.nodes(data="weight")])
+    c_e_flow = hyperparams["edge_factor"] * np.array([graph_flow.get_edge_data(*e)["weight"] for e in graph_flow.edges])
+
+    # print(c_v)
+    c = np.concatenate([c_e, c_v, c_e_flow])
+    
+    # constraint matrices: {E or V} x (E + 3V)
+    # columns: c_e, c_v, c_va, c_vd
+    
+    A0 = np.zeros((E, E + V+ E_flow))
+    A0[:E, :E] = 2 * np.eye(E)
+    for edge in graph.edges:
+        edge_id = edge_to_idx[edge]
+        A0[edge_id, E + edge[0]] = -1
+        A0[edge_id, E + edge[1]] = -1
+    print(A0.astype(int))
+
+        
+    A1 = np.zeros((V, E + V + E_flow))
+    A1[:V, E:E+V] = 2 * np.eye(V)
+    for node in graph.nodes:
+        for edge in graph.out_edges(node):
+            edge_id = edge_to_idx[edge]
+            A1[node, edge_id] = -1
+        if node in graph_flow.nodes:
+            for edge in graph_flow.out_edges(node):
+                edge_id = edge_to_idx_flow[edge]
+                A1[node, E + V + edge_id] = -1
+         
+        for edge in graph.in_edges(node):
+            edge_id = edge_to_idx[edge]
+            A1[node, edge_id] = -1
+        if node in graph_flow.nodes:
+            for edge in graph_flow.in_edges(node):
+                edge_id = edge_to_idx_flow[edge]
+                A1[node, E+V+edge_id] = -1
+            
+    A2 = np.zeros((V, E + V + E_flow))
+    
+    for node in graph.nodes:
+        out_edges = graph.out_edges(node)
+        for edge in out_edges:
+            edge_id = edge_to_idx[edge]
+            A2[node, edge_id] = -1
+        
+        if node in graph_flow.nodes:
+            out_edges = graph_flow.out_edges(node)
+            for edge in out_edges:
+                edge_id = edge_to_idx_flow[edge]
+                A2[node, E+V+edge_id] = -1
+            
+            
+        in_edges = graph.in_edges(node)
+        for edge in in_edges:
+            edge_id = edge_to_idx[edge]
+            A2[node, edge_id] = 1
+         
+        if node in graph_flow.nodes:
+            in_edges = graph_flow.in_edges(node)
+            for edge in in_edges:
+                edge_id = edge_to_idx_flow[edge]
+                A2[node, E+V+edge_id] = 1
+     
+    
+    
+    constraints = [
+        A0 @ x <= 0, 
+        A1 @ x <= 0,
+        A2 @ x == 0,
+    ]
+    
+    # objective = cp.Minimize( c_v.T @ x_v + c_e.T @ x_e)
+    objective = cp.Minimize( c.T @ x)
+
+    
+    # return A0, A1, A2
+
+    return cp.Problem(objective, constraints)
+
+# %%
+ilp_flow = graph2ilp_flow(candidate_graph, hyperparams={"cost_appear": 1, "cost_disappear": 1, "node_offset": 0, "node_factor": -10000, "edge_factor": 1})
+
+# %%
+
+# %%
+A0, A1, A2 = graph2ilp_flow(candidate_graph, hyperparams={"cost_appear": 1, "cost_disappear": 1, "node_offset": 0, "node_factor": -10000, "edge_factor": 1})
+
+# %%
+A1 @ x 
+
+# %%
+A1
+
+# %%
+print(candidate_graph.edges)
+
+# %%
+x = np.array([1, 0, 0, 0,
+          0, 1, 0, 1, 0, 0, 0])
+
+# %%
+E = candidate_graph.number_of_edges()
+V = candidate_graph.number_of_nodes()
+V
+
+# %%
+ilp_flow.solve()
+print("ILP Status: ", ilp_flow.status)
+print("The optimal value is", ilp_flow.value)
+print("x_e")
+E = candidate_graph.number_of_edges()
+V = candidate_graph.number_of_nodes()
+print(ilp_flow.variables()[0].value[:E])
+print("x_v")
+print(ilp_flow.variables()[0].value[E:E+V])
+
 # %%
 ilp_nodiv = graph2ilp_nodiv(candidate_graph, hyperparams={"cost_appear": 1, "cost_disappear": 1, "node_offset": 0, "node_factor": -1, "edge_factor": 1})
 
@@ -522,13 +672,13 @@ def solution2graph(solution, base_graph):
 
 
 # %%
-solved_graph_nodiv = solution2graph(ilp_nodiv, candidate_graph)
+solved_graph_flow = solution2graph(ilp_flow, candidate_graph)
 
 # %%
 fig, (ax0, ax1, ax2) = plt.subplots(1,3, figsize=(32, 7))
 draw_graph(gt_graph, "Ground truth graph", ax=ax0)
 draw_graph(candidate_graph, "Candidate graph", ax=ax1)
-draw_graph(solved_graph_nodiv, f"ILP solution (no divisions) - cost: {ilp_nodiv.value:.3f}", ax=ax2)
+draw_graph(solved_graph_flow, f"ILP solution (no divisions) - cost: {ilp_flow.value:.3f}", ax=ax2)
 
 
 # %% [markdown]
@@ -647,7 +797,7 @@ def graph2ilp_div(graph, hyperparams):
     # At most 2 edges
     A3 = np.zeros((V, E + 3*V))
     A3[:, E:E+V] = -2*np.eye(V)
-    A3[:, E+2*V:E+3*V] = np.eye(V)
+    A3[:, E+2*V:E+3*V] = 2*np.eye(V)
     
     for node in graph.nodes: # This could be done with the last for loop too
         in_edges = graph.in_edges(node)
@@ -709,9 +859,11 @@ viewer = napari.viewer.current_viewer()
 if viewer:
     viewer.close()
 viewer = napari.Viewer()
+viewer.proper
 viewer.add_image(x)
 # visualize_tracks(viewer, y)
 viewer.add_labels(detections)
+viewer.add_labels(recolored_gt)
 viewer.add_labels(det_solved_div);
 
 # %%
