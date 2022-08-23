@@ -8,9 +8,9 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.14.1
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: ilp
 #     language: python
-#     name: python3
+#     name: ilp
 # ---
 
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
@@ -43,6 +43,7 @@ import numpy as np
 import cvxpy as cp
 
 import napari
+import networkx as nx
 
 lbl_cmap = random_label_cmap()
 # Pretty tqdm progress bars 
@@ -269,8 +270,9 @@ def build_graph(detections, max_distance=np.finfo(float).max):
         regions = skimage.measure.regionprops(frame)
         lut = {}
         for r in regions:
-            G.add_node(n_v, time=t, detection_id=r.label, weight=1)
-            draw_positions[n_v] = np.array([t, d.shape[0] - r.centroid[0]])
+            draw_pos = np.array([t, d.shape[0] - r.centroid[0]])
+            G.add_node(n_v, time=t, detection_id=r.label, weight=1, draw_position=draw_pos)
+            draw_positions[n_v] = draw_pos
             lut[r.label] = n_v
             n_v += 1
         luts.append(lut)
@@ -318,8 +320,9 @@ def build_graph_from_tracks(detections, links=None):
         regions = skimage.measure.regionprops(frame)
         lut = {}
         for r in regions:
-            G.add_node(n_v, time=t, detection_id=r.label, weight=1)
-            draw_positions[n_v] = np.array([t, d.shape[0] - r.centroid[0]])
+            draw_pos = np.array([t, d.shape[0] - r.centroid[0]])
+            G.add_node(n_v, time=t, detection_id=r.label, weight=1, draw_position=draw_pos)
+            draw_positions[n_v] = draw_pos
             lut[r.label] = n_v
             n_v += 1
         luts.append(lut)
@@ -364,7 +367,9 @@ def build_graph_from_tracks(detections, links=None):
 
 
 # %%
-def draw_graph(g, pos, title=None):
+def draw_graph(g, pos=None, title=None):
+    if pos is None: # retrieve from node features
+        pos = {i: g.nodes[i]["draw_position"] for i in g.nodes}
     fig, ax = plt.subplots()
     plt.title(title)
     nx.draw(g, pos=pos, with_labels=True, ax=ax)
@@ -388,7 +393,7 @@ draw_graph(graph, draw_pos, "Candidate graph")
 # %%
 def graph2ilp_nodiv(graph, hyperparams):
     """TODO cleanup"""
-    edge_to_idx = lambda x: {edge: i for i, edge in enumerate(graph.edges)}[x]
+    edge_to_idx = {edge: i for i, edge in enumerate(graph.edges)}
     E = graph.number_of_edges()
     V = graph.number_of_nodes()
     x = cp.Variable(E + 3*V, boolean=True)
@@ -407,7 +412,7 @@ def graph2ilp_nodiv(graph, hyperparams):
     A0 = np.zeros((E, E + 3 * V))
     A0[:E, :E] = 2 * np.eye(E)
     for edge in graph.edges:
-        edge_id = edge_to_idx(edge)
+        edge_id = edge_to_idx[edge]
         A0[edge_id, E + edge[0]] = -1
         A0[edge_id, E + edge[1]] = -1
     
@@ -419,7 +424,7 @@ def graph2ilp_nodiv(graph, hyperparams):
     for node in graph.nodes:
         out_edges = graph.out_edges(node)
         for edge in out_edges:
-            edge_id = edge_to_idx(edge)
+            edge_id = edge_to_idx[edge]
             A1[node, edge_id] = 1
      
     # Disappear continuation
@@ -430,7 +435,7 @@ def graph2ilp_nodiv(graph, hyperparams):
     for node in graph.nodes:
         in_edges = graph.in_edges(node)
         for edge in in_edges:
-            edge_id = edge_to_idx(edge)
+            edge_id = edge_to_idx[edge]
             A2[node, edge_id] = -1
     
     constraints = [
@@ -447,8 +452,140 @@ def graph2ilp_nodiv(graph, hyperparams):
     
     return cp.Problem(objective, constraints)
 
-def solution2graph(solution):
-    pass
+# %%
+ilp_nodiv = graph2ilp_nodiv(graph, hyperparams={"cost_appear": 1, "cost_disappear": 1, "node_offset": 0, "node_factor": -1, "edge_factor": 1})
+
+# %%
+ilp_nodiv.solve()
+print("ILP Status: ", ilp_nodiv.status)
+print("The optimal value is", ilp_nodiv.value)
+print("x_e")
+E = graph.number_of_edges()
+V = graph.number_of_nodes()
+print(ilp_nodiv.variables()[0].value[:E])
+print("x_v")
+print(ilp_nodiv.variables()[0].value[E:E+V])
+print("x_va")
+print(ilp_nodiv.variables()[0].value[E+V:E+2*V])
+print("x_vd")
+print(ilp_nodiv.variables()[0].value[E+2*V:E+3*V])
+
+
+# %%
+def graph2ilp_div(graph, hyperparams):
+    """TODO cleanup"""
+    edge_to_idx = {edge: i for i, edge in enumerate(graph.edges)}
+    E = graph.number_of_edges()
+    V = graph.number_of_nodes()
+    x = cp.Variable(E + 3*V, boolean=True)
+    
+    c_e = hyperparams["edge_factor"] * np.array([graph.get_edge_data(*e)["weight"] for e in graph.edges])
+    c_v = hyperparams["node_offset"] + hyperparams["node_factor"] * np.array([v for k, v in sorted(dict(graph.nodes(data="weight")).items())])
+
+    c_va = np.ones(V) * hyperparams["cost_appear"]
+    c_vd = np.ones(V) * hyperparams["cost_disappear"]
+    
+    c = np.concatenate([c_e, c_v, c_va, c_vd])
+    
+    # constraint matrices: {E or V} x (E + 3V)
+    # columns: ce, c_v, c_va, c_vd
+    
+    A0 = np.zeros((E, E + 3 * V))
+    A0[:E, :E] = 2 * np.eye(E)
+    for edge in graph.edges:
+        edge_id = edge_to_idx[edge]
+        A0[edge_id, E + edge[0]] = -1
+        A0[edge_id, E + edge[1]] = -1
+    
+    # Appear continuation
+    A1 = np.zeros((V, E + 3 * V))
+    A1[:, E:E+V] = -np.eye(V)
+    A1[:, E+V:E+2*V] = np.eye(V)
+    
+    for node in graph.nodes:
+        out_edges = graph.out_edges(node)
+        for edge in out_edges:
+            edge_id = edge_to_idx[edge]
+            A1[node, edge_id] = 1
+     
+    # Disappear continuation
+    A2 = np.zeros((V, E + 3 * V))
+    A2[:, E:E+V] = np.eye(V)
+    A2[:, E+2*V:E+3*V] = - np.eye(V)
+    
+    for node in graph.nodes:
+        in_edges = graph.in_edges(node)
+        for edge in in_edges:
+            edge_id = edge_to_idx[edge]
+            A2[node, edge_id] = -1
+    
+    # At most 2 edges
+    A3 = np.zeros((V, E + 3*V))
+    A3[:, E:E+V] = -2*np.eye(V)
+    A3[:, E+2*V:E+3*V] = np.eye(V)
+    
+    for node in graph.nodes: # This could be done with the last for loop too
+        in_edges = graph.in_edges(node)
+        for edge in in_edges:
+            edge_id = edge_to_idx[edge]
+            A3[node, edge_id] = 1
+    
+    constraints = [
+        A0 @ x <= 0, 
+        A1 @ x == 0,
+        A2 @ x <= 0,
+        A3 @ x <= 0,
+    ]
+    
+    
+    
+    # objective = cp.Minimize( c_v.T @ x_v + c_e.T @ x_e)
+    objective = cp.Minimize( c.T @ x)
+
+    
+    return cp.Problem(objective, constraints)
+
+# %%
+ilp_div = graph2ilp_div(graph, hyperparams={"cost_appear": 1, "cost_disappear": 1, "node_offset": 0, "node_factor": -1, "edge_factor": 1})
+
+# %%
+ilp_div.solve()
+print("ILP Status: ", ilp_div.status)
+print("The optimal value is", ilp_div.value)
+print("x_e")
+E = graph.number_of_edges()
+V = graph.number_of_nodes()
+print(ilp_div.variables()[0].value[:E])
+print("x_v")
+print(ilp_div.variables()[0].value[E:E+V])
+print("x_va")
+print(ilp_div.variables()[0].value[E+V:E+2*V])
+print("x_vd")
+print(ilp_div.variables()[0].value[E+2*V:E+3*V])
+
+
+# %%
+def solution2graph(solution, base_graph):
+    
+    solution_var = solution.variables()[0].value
+    
+    new_graph = nx.DiGraph()
+    
+    # Build nodes
+    x_v = solution_var[E:E+V]
+    picked_nodes = (x_v>1e-6).nonzero()[0]
+    for node in picked_nodes:
+        node_features = base_graph.nodes[node]
+        new_graph.add_node(node, **node_features)
+    
+    # Build edges
+    original_edges = list(graph.edges)
+    x_e = solution_var[:E]
+    picked_edges = (x_e>1e-6).nonzero()[0]
+    for edge in picked_edges:
+        new_graph.add_edge(*original_edges[edge])
+    return new_graph
+        
 
 def graph2links(solution_graph):
     # list of links, births, deaths
@@ -458,26 +595,13 @@ def graph2links(solution_graph):
 
 
 # %%
-graph = build_graph(detections)
-ilp = graph2ilp_nodiv(graph, hyperparams={"cost_appear": 1, "cost_disappear": 1, "node_offset": 0, "node_factor": -1, "edge_factor": 1})
+solved_graph_nodiv = solution2graph(ilp_nodiv, graph)
+solved_graph_div = solution2graph(ilp_div, graph)
 
 # %%
-ilp.solve()
-print("ILP Status: ", ilp.status)
-print("The optimal value is", ilp.value)
-print("x_e")
-E = graph.number_of_edges()
-V = graph.number_of_nodes()
-print(ilp.variables()[0].value[:E])
-print("x_v")
-print(ilp.variables()[0].value[E:E+V])
-print("x_va")
-print(ilp.variables()[0].value[E+V:E+2*V])
-print("x_vd")
-print(ilp.variables()[0].value[E+2*V:E+3*V])
+draw_graph(solved_graph_nodiv, None, f"ILP Solution (without divisions) - Optimal cost: {ilp_nodiv.value:.3f}")
+draw_graph(solved_graph_div, None, f"ILP Solution (with divisions) - Optimal cost: {ilp_div.value:.3f}")
 
-
-# %%
 
 # %%
 # TODO some tests for the students
