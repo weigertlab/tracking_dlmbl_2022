@@ -51,7 +51,7 @@ import matplotlib.pyplot as plt
 # %matplotlib inline
 matplotlib.rcParams["image.interpolation"] = "none"
 matplotlib.rcParams['figure.figsize'] = (14, 10)
-from tifffile import imread
+from tifffile import imread, imwrite
 from tqdm.auto import tqdm
 import skimage
 import pandas as pd
@@ -101,18 +101,12 @@ def preprocess(X, Y, axis_norm=(0,1)):
 # ## Inspect the dataset
 
 # %% [markdown]
-# For this exercise we will be working with a fluorenscence microscopy time-lapse of breast cancer cells with stained nuclei (SiR-DNA).
+# For this exercise we will be working with a fluorenscence microscopy time-lapse of breast cancer cells with stained nuclei (SiR-DNA), originally from https://zenodo.org/record/4034976#.YwZRCJPP1qt.
 #
-# Let's download the dataset to your machine.
+# We will use a slightly modified version.
 
 # %%
-base_path = Path("data/cancer_cell_migration")
-
-if base_path.exists():
-    print("Dataset already downloaded.")
-else:
-    # !curl https://drive.switch.ch/index.php/s/DUwFtY7LAxOFTUW/download --create-dirs -o data/cancer_cell_migration.zip
-    # !unzip -q data/cancer_cell_migration.zip -d data
+base_path = Path("data/exercise1")
 
 # %% [markdown]
 # Load the dataset (images and tracking annotations) from disk into this notebook.
@@ -125,26 +119,10 @@ print(f"Number of images: {len(x)}")
 print(f"Image shape: {x[0].shape}")
 links = np.loadtxt(base_path / "gt_tracking" / "man_track.txt", dtype=int)
 links = pd.DataFrame(data=links, columns=["track_id", "from", "to", "parent_id"])
-# links = pd.read_csv(base_path / "gt_tracking" / "man_track.csv")
 print("Links")
 links[:10]
 
-# %% [markdown]
-# Crop the dataset in time and space to reduce runtime; preprocess.
-
 # %%
-# TODO final version of the dataset to switchdrive and remove this.
-delta_t = 5
-
-x = x[::delta_t, 300:, :]
-y = y[::delta_t, 300:, :]
-# x = x[:5:delta_t, -64:, -64:]
-# y = y[:5:delta_t, -64:, -64:]
-
-links["from"] = (np.ceil(links["from"] / 5)).astype(int)
-links["to"] = (np.ceil(links["to"] // 5)).astype(int)
-print(f"Number of images: {len(x)}")
-print(f"Image shape: {x[0].shape}")
 x, y = preprocess(x, y)
 
 # %% [markdown]
@@ -177,7 +155,7 @@ viewer.add_image(x, name="image");
 # %%
 def visualize_tracks(viewer, y, links=None, name=""):
     """Utility function to visualize segmentation and tracks"""
-    max_label = links.max() if links is not None else y.max()
+    max_label = max(links.max(), y.max()) if links is not None else y.max()
     colorperm = np.random.default_rng(42).permutation((np.arange(1, max_label + 2)))
     tracks = []
     for t, frame in enumerate(y):

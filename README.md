@@ -4,7 +4,6 @@
 TODO Test napari launched from jupyter notebook in final environment on machines.
 
 1. CPU-only environment: `env_cpu.yml`.
-1. TODO optional: Environment with GPU support: `env_gpu.yml`. TODO update for exercise3.
 
 
 ## Exercises
@@ -35,9 +34,10 @@ TODO Test napari launched from jupyter notebook in final environment on machines
     
 3. Tracking with an integer linear program (ILP)
 
-    Here we will introduce an advanced formulation of tracking.
+    Here we will introduce a modern formulation of tracking.
 
     You will learn
-    - how linking can be modeled as an **integer linear program (ILP)** with global context for a small-scale tracking problem using `networkx` and `cvxpy` (Exercise 3.1).
-    - to extend the ILP to properly model cell divisions (Exercise 3.2).
-    - to tune the hyperparameters of the ILP (Exercise 3.3).
+    - how linking with global context can be modeled as a **network flow** using `networkx` and solved efficiently as an **integer linear program (ILP)** with `cvxpy` for small-scale problems (Exercise 3.1).
+    - to adapt the previous formulation to allow for **arbitrary track starting and ending points** (Exercise 3.2).
+    - to extend the ILP to properly model **cell divisions** (Exercise 3.3).
+    - to tune the **hyperparameters** of the ILP (Exercise 3.4).
