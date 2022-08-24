@@ -1,9 +1,8 @@
 # Exercise 8 - Tracking
 
 ## Setup
-TODO Test napari launched from jupyter notebook in final environment on machines.
-
-1. CPU-only environment: `env_cpu.yml`.
+1. Install environment (CPU-only, no GPU needed for this exercise): `conda env create -f env_cpu.yml
+`.
 
 
 ## Exercises
@@ -26,7 +25,7 @@ TODO Test napari launched from jupyter notebook in final environment on machines
     
     You will learn
     - how this formulation addresses **typical challenges of tracking in bioimages**, like cell division and objects temporarily going out of focus.
-    - how to use **Trackmate**, a versatile ready-to-go implementation of two-step LAP tracking in `ImageJ/Fiji`.
+    - TODO write workflow description. How to use **Trackmate**, a versatile ready-to-go implementation of two-step LAP tracking in `ImageJ/Fiji`.
 
 
 

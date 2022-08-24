@@ -32,6 +32,14 @@
 # ## Import packages
 
 # %%
+# Force keras to run on CPU
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
+# Notebook at full width in the browser
+from IPython.display import display, HTML
+display(HTML("<style>.container { width:100% !important; }</style>"))
+
 import sys
 from urllib.request import urlretrieve
 from pathlib import Path
@@ -591,6 +599,8 @@ print("x_e")
 print(ilp_flow.variables()[0].value[:E])
 print("x_v")
 print(ilp_flow.variables()[0].value[E:E+V])
+print("x_e_flow")
+print(ilp_flow.variables()[0].value[E+V:])
 
 
 # %%
@@ -862,10 +872,8 @@ V = candidate_graph.number_of_nodes()
 print(ilp_nodiv.variables()[0].value[:E])
 print("x_v")
 print(ilp_nodiv.variables()[0].value[E:E+V])
-print("x_va")
-print(ilp_nodiv.variables()[0].value[E+V:E+2*V])
-print("x_vd")
-print(ilp_nodiv.variables()[0].value[E+2*V:E+3*V])
+print("x_e_flow")
+print(ilp_nodiv.variables()[0].value[E+V:])
 
 # %%
 solved_graph_nodiv = solution2graph(ilp_nodiv, candidate_graph)
@@ -1216,10 +1224,8 @@ V = candidate_graph.number_of_nodes()
 print(ilp_div.variables()[0].value[:E])
 print("x_v")
 print(ilp_div.variables()[0].value[E:E+V])
-# print("x_va")
-# print(ilp_div.variables()[0].value[E+V:E+2*V])
-# print("x_vd")
-# print(ilp_div.variables()[0].value[E+2*V:E+3*V])
+print("x_e_flow")
+print(ilp_div.variables()[0].value[E+V:])
 
 # %%
 solved_graph_div = solution2graph(ilp_div, candidate_graph)
