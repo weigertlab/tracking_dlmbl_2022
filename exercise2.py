@@ -18,38 +18,43 @@
 #
 # You can run this notebook on your laptop, a GPU is not needed :).
 #
-# Here we will improve the tracking algorithm introduced in exercise 1 by using a linking algorithm that considers more than two frames at a time, the _Linear Assignment Problem_ (LAP).
+# Here we will use an extended version of the tracking algorithm introduced in exercise 1 which uses a linking algorithm that considers more than two frames at a time in a second optimization step.
 #     
 # You will learn
 # - how this formulation addresses **typical challenges of tracking in bioimages**, like cell division and objects temporarily going out of focus.
-# - to set up the two **LAP cost matrices** step by step and how to use a solver in python.
 # - how to use **_Trackmate_**, a versatile ready-to-go implementation of LAP tracking in ImageJ.
 
-# %% [markdown] jp-MarkdownHeadingCollapsed=true tags=[]
-# ## Install dependencies and import packages
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# ## Exercise 2
+#
+# <div class="alert alert-block alert-info"><h3>Exercise 2: With your understanding of the challenges of the dataset from exercise 1, perform two-step LAP tracking using StarDist detections in ImageJ/Fiji with Trackmate.</h3>
+#
+# </div>
+#
+# <img src="figures/LAP_cost_matrix_2.png" width="500"/>
+#
+# Taken from Jaqaman et al. (2008)
 
-# %%
-from pathlib import Path
+# %% [markdown]
+# ## Install ImageJ/Fiji, including StarDist inference
 
-import matplotlib.pyplot as plt
-# %matplotlib inline
-matplotlib.rcParams['figure.figsize'] = (12, 8)
-from tifffile import imread
-from tqdm import tqdm
+# %% [markdown]
+# TODO
 
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Load and prepare the dataset
 
 # %% tags=[]
+TODO
 
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Extract detections
 
-# %%
-# TODO short version of detection from exercise 1
-
 # %% [markdown]
-#
+# TODO
+
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# ## Extract features
 
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Introduction to the linear assignment problem (LAP)
@@ -70,103 +75,21 @@ from tqdm import tqdm
 # [Jaqaman et al. (2008). Robust single-particle tracking in live-cell time-lapse sequences. Nature methods, 5(8), 695-702.](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2747604/)
 
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
-# ## Extract features
-
-# %%
-# TODO short version of feature extraction from exercise 1
-
-# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Frame-by-frame linking
-
-# %%
-# TODO cost matrix and setup will be given
 
 # %% [markdown] tags=[]
 # ## Segment linking
 
-# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
-# ## Exercise 2.1
-#
-# <div class="alert alert-block alert-info"><h3>Exercise 2.1: Cost matrix for gap closing</h3>
-#
-# Set up the cost matrix for gap closing. We will not consider the part for merging/splitting here.
-#
-# </div>
-#
-# <img src="figures/LAP_cost_matrix_2.png" width="500"/>
-#
-# Taken from Jaqaman et al. (2008)
+# %% [markdown]
+# TODO
 
 # %% [markdown]
-# Run the LAP
-
-# %%
-# How would this be extended to the Jacquamard tracker?
-# You need tracklets (a class. The objects can be extracted from the dense tracklets), which are then used to calculate costs and set up the matching matrix.
-# There needs to be a nice function to calculate costs between tracklets, based on the tracklet class (similar to man_track.txt) and the dense tracklet annotations.
-# Cost for death: constant
-# Cost for new track: constant
-# Cost for merging beginning to existing tracklet (division) --> function
-# Cost for merging end to existing tracklet
-# Cost for gap closing: end 
-
-# This is a second step that can go on top of exercise 1.
+# ## Run the LAP
 
 # %% [markdown]
-#
+# TODO
 
 # %% [markdown] tags=[]
-# ### Visualize results
-
-# %%
-# napari
-
-# %% [markdown]
-# ## Exercise 2.2
-#
-# <div class="alert alert-block alert-info"><h3>Exercise 2.2: Cost matrix for modeling cell divisions</h3>
-#
-# Extend the cost matrix above to include the costs for modeling cell visions.
-#
-# </div>
-
-# %% [markdown]
-# ## Checkpoint 3
-# <div class="alert alert-block alert-success"><h3>Checkpoint 3: We have implemented a fully-fledged tracking algorithm from scratch.</h3></div>
-
-# %% [markdown] tags=[]
-# ## Run the full linear assignment problem in Trackmate
-
-# %% [markdown] jp-MarkdownHeadingCollapsed=true tags=[]
-# ## Exercise 2.3
-#
-# <div class="alert alert-block alert-info"><h3>Exercise 2.3: Walk through LAP tracking workflow in Trackmate</h3>
-#
-# Use Trackmate to conveniently do tracking using the LAP formulation.
-#     
-# Explore different options (TODO which ones are interesting for the cancer cell migration dataset?)
-#     
-# </div>
-
-# %% [markdown]
-# TODO Fill in screen shots and text
-
-# %% [markdown]
-# Install Fiji
-
-# %%
-
-# %% [markdown]
-# Install Trackmate + StarDist detection
-
-# %%
-
-# %% [markdown]
-# Configure tracking
-
-# %%
-
-# %% [markdown]
-# Inspect results
+# ## Visualize results
 
 # %%
