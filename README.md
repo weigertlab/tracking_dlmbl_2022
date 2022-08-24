@@ -1,8 +1,9 @@
 # Exercise 8 - Tracking
 
 ## Setup
-1. Install environment (CPU-only, no GPU needed for this exercise): `conda env create -f env_cpu.yml
-`.
+1. Install environment on your virtual machine (CPU-only, no GPU needed for this exercise): `conda env create -f env_dlmbl_cpu.yml`.
+1. Activate the environment: `conda activate exercise08_tracking_cpu`.
+1. Launch "jupyter lab".
 
 
 ## Exercises

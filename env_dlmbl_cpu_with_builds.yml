@@ -1,4 +1,4 @@
-name: napari_pip
+name: exercise08_tracking_cpu_builds
 channels:
   - conda-forge
   - defaults
@@ -310,4 +310,4 @@ dependencies:
     - termcolor==1.1.0
     - werkzeug==2.2.2
     - widgetsnbextension==4.0.2
-prefix: /home/gallusserb/miniconda3/envs/napari_pip
+prefix: /home/gallusserb/miniconda3/envs/exercise08_tracking_cpu_builds
