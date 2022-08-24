@@ -23,15 +23,11 @@
 # You will learn
 # - to **store and visualize** tracking results with `napari` (Exercise 1.1).
 # - to use a robust pretrained deep-learning-based **object detection** algorithm called *StarDist* (Exercise 1.2).
-# - to implement a basic nearest-neighbor linking algorithm (Exercises 1.3 - 1.6).
-# - to compute optimal frame-by-frame linking by setting up a bipartite matching problem and using a python-based solver (Exercise 1.7).
-# - to **evaluate the output** of a tracking algorithm against a ground truth annotation.
+# - to implement a basic **nearest-neighbor linking algorithm** (Exercises 1.3 - 1.6).
+# - to compute optimal frame-by-frame linking by setting up a **bipartite matching problem** and using a python-based solver (Exercise 1.7).
 # - to compute suitable object **features** for the object linking process with `scikit-image` (Exercise 1.8).
 #
 # Places where you are expected to write code are marked with ```YOUR CODE HERE```.
-
-# %% [raw]
-# # TODO input output gif to show the task on this dataset, using napari.
 
 # %% [markdown]
 # ![SegmentLocal](figures/trackmate-stardist-tracking.gif "segment")
@@ -144,7 +140,8 @@ viewer.add_image(x, name="image");
 # <div class="alert alert-block alert-danger"><h3>Napari in a jupyter notebook:</h3>
 #     
 # - To have napari working in a jupyter notebook, you need to use up-to-date versions of napari, pyqt and pyqt5, as is the case in the conda environments provided together with this exercise.
-# - When you are coding debugging and debugging, close the napari viewer with `viewer.close()` to avoid problems with the asynchronous napari and jupyter event loops. Sometimes you might have to execute a cell twice to get through.
+# - When you are coding and debugging, close the napari viewer with `viewer.close()` to avoid problems with the two event loops of napari and jupyter.
+# - **If a cell is not executed (empty square brackets on the left of a cell) despite you running it, running it a second time right after will usually work.**
 # </div>
 
 # %% [markdown]
@@ -236,7 +233,7 @@ visualize_divisions(viewer, y, links.to_numpy());
 # %% tags=[]
 idx = 0
 model = StarDist2D.from_pretrained("2D_versatile_fluo")
-detections, details = model.predict_instances(x[idx], scale=(1,1))
+(detections, details), (prob, _) = model.predict_instances(x[idx], scale=(1, 1), return_predict=True)
 plot_img_label(x[idx], detections, lbl_title="detections")
 
 # %% [markdown]
@@ -245,21 +242,16 @@ plot_img_label(x[idx], detections, lbl_title="detections")
 # <!-- Notice that each object comes with a center point, which we can use to compute pairwise euclidian distances between objects. -->
 
 # %%
-coord, points, prob = details['coord'], details['points'], details['prob']
-plt.figure(figsize=(20,20))
-plt.subplot(211)
+coord, points, polygon_prob = details['coord'], details['points'], details['prob']
+plt.figure(figsize=(24,12))
+plt.subplot(121)
 plt.title("Predicted Polygons")
-_draw_polygons(coord, points, prob, show_dist=True)
+_draw_polygons(coord, points, polygon_prob, show_dist=True)
 plt.imshow(x[idx], cmap='gray'); plt.axis('off')
 
-# plt.subplot(312)
-# plt.title("Ground truth tracking anntotations")
-# plt.imshow(x[idx], cmap='gray')
-# plt.imshow(y[idx], cmap=lbl_cmap, alpha=0.5); plt.axis('off')
-
-plt.subplot(212)
+plt.subplot(122)
 plt.title("Object center probability")
-plt.imshow(x[idx], cmap='magma'); plt.axis('off')
+plt.imshow(prob, cmap='magma'); plt.axis('off')
 plt.tight_layout()
 plt.show() 
 
@@ -794,17 +786,6 @@ viewer = napari.Viewer()
 viewer.add_image(x)
 visualize_tracks(viewer, nn_tracks, name="nn");
 
-
-# %% [markdown]
-# ### Load ground truth and compute a metric
-
-# %%
-# TODO metrics
-# MOTA
-# False divs
-# False merges
-
-# Analyse your results visually and quantitatively
 
 # %% [markdown]
 # ## Checkpoint 2

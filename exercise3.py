@@ -25,12 +25,13 @@
 # - to adapt the formulation from Exercise 3.1 to allow for **arbitrary track starting and ending points** (Exercise 3.2).
 # - to extend the ILP to properly model **cell divisions** (Exercise 3.3).
 # - to tune the **hyperparameters** of the ILP (Exercise 3.4).
+#
+# Places where you are expected to write code are marked with ```YOUR CODE HERE```.
 
 # %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Import packages
 
 # %%
-# TODO clean up imports
 import sys
 from urllib.request import urlretrieve
 from pathlib import Path
@@ -1245,19 +1246,12 @@ draw_graph(gt_graph, "Ground truth graph", ax=ax2)
 draw_graph(solved_graph_nodiv, f"ILP solution (no divisions) - cost: {ilp_nodiv.value:.3f}", ax=ax3)
 
 
-# %%
-# TODO metrics
-# MOTA
-# False divs
-# False merges
-
-# Analyse your results visually and quantitatively
-
 # %% [markdown]
 # ## Exercise 3.4
-# <div class="alert alert-block alert-info"><h3>Exercise 3.4: Improve tracking and compare with metrics.</h3>
+# <div class="alert alert-block alert-info"><h3>Exercise 3.4: Try to improve the ILP-based tracking from exercise 3.3</h3>
 #
-# - Tune the hyperparameters of the full ILP.
+# For example
+# - Tune the hyperparameters.
 # - Better edge features than drift-corrected euclidian distance.
 # - Tune the detection algorithm to avoid false negatives.
 #     

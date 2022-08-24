@@ -13,12 +13,11 @@ TODO Test napari launched from jupyter notebook in final environment on machines
     Here we will walk through all basic components of a tracking-by-detection algorithm.
     
     You will learn
-    - to **store and visualize** tracking results with `napari`.
-    - to use a robust pretrained deep-learning-based **object detection** algorithm called *StarDist*.
-    - to implement a basic **nearest-neighbor** linking algorithm.
-    - to compute optimal frame-by-frame linking by setting up a **bipartite matching problem** (also called *linear assignment problem (LAP)*) and using a python-based solver.
-    - TODO to **evaluate the output** of a tracking algorithm against ground truth annotations.
-    - to compute suitable object **features** for the object linking process with `scikit-image`.
+    - to **store and visualize** tracking results with `napari` (Exercise 1.1).
+    - to use a robust pretrained deep-learning-based **object detection** algorithm called *StarDist* (Exercise 1.2).
+    - to implement a basic **nearest-neighbor** linking algorithm (Exercises 1.3 - 1.6).
+    - to compute optimal frame-by-frame linking by setting up a **bipartite matching problem** (also called *linear assignment problem (LAP)*) and using a python-based solver (Exercise 1.7).
+    - to compute suitable object **features** for the object linking process with `scikit-image` (Exercise 1.8).
 
 
 2. Tracking with two-step Linear Assignment Problem (LAP)
