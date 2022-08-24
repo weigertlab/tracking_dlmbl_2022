@@ -26,8 +26,7 @@
     
     You will learn
     - how this formulation addresses **typical challenges of tracking in bioimages**, like cell division and objects temporarily going out of focus.
-    - TODO write workflow description. How to use **Trackmate**, a versatile ready-to-go implementation of two-step LAP tracking in `ImageJ/Fiji`.
-
+    - How to use **Trackmate**, a versatile ready-to-go implementation of two-step LAP tracking in `ImageJ/Fiji`. TODO write notebook, link full dataset.
 
 
     

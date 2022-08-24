@@ -17,18 +17,8 @@
 # # Exercise 3/3: Tracking with an integer linear program (ILP)
 #
 # You could also run this notebook on your laptop, a GPU is not needed :).
-#
-# Here we will introduce a more advanced formulation of tracking.
-#     
-# You will learn
-# - how linking with global context can be modeled as a **network flow** using `networkx` and solved efficiently as an **integer linear program (ILP)** with `cvxpy` for small-scale problems (Exercise 3.1).
-# - to adapt the formulation from Exercise 3.1 to allow for **arbitrary track starting and ending points** (Exercise 3.2).
-# - to extend the ILP to properly model **cell divisions** (Exercise 3.3).
-# - to tune the **hyperparameters** of the ILP (Exercise 3.4).
-#
-# Places where you are expected to write code are marked with ```YOUR CODE HERE```.
 
-# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true jp-MarkdownHeadingCollapsed=true tags=[]
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true jp-MarkdownHeadingCollapsed=true tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Import packages
 
 # %%
@@ -73,9 +63,6 @@ lbl_cmap = random_label_cmap()
 # Pretty tqdm progress bars 
 # ! jupyter nbextension enable --py widgetsnbextension
 
-# %% [markdown]
-# Some utility functions
-
 # %%
 def plot_img_label(img, lbl, img_title="image", lbl_title="label", **kwargs):
     fig, (ai,al) = plt.subplots(1,2, gridspec_kw=dict(width_ratios=(1,1)))
@@ -95,19 +82,11 @@ def preprocess(X, Y, axis_norm=(0,1)):
     return X, Y
 
 
-# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true jp-MarkdownHeadingCollapsed=true tags=[]
 # ## Inspect the dataset
-
-# %% [markdown]
-# For this exercise we will be working with an even smaller crop of the dataset we have already used in the tracking exercise 1.
-#
-# It is a fluorenscence microscopy time-lapse of breast cancer cells with stained nuclei (SiR-DNA), originally from https://zenodo.org/record/4034976#.YwZRCJPP1qt.
 
 # %%
 base_path = Path("data/exercise3")
-
-# %% [markdown]
-# Load the dataset (images and tracking annotations) from disk into this notebook.
 
 # %%
 x = np.stack([imread(str(p)) for p in sorted((base_path/ "images").glob("*.tif"))])
@@ -122,15 +101,9 @@ links[:10]
 # %%
 x, y = preprocess(x, y)
 
-# %% [markdown]
-# Visualize some images (by changing `idx`).
-
 # %%
 idx = 0
 plot_img_label(x[idx], y[idx])
-
-# %% [markdown]
-# This is ok to take a glimpse, but a dynamic viewer would be much better. Let's use [napari](https://napari.org/tutorials/fundamentals/getting_started.html) for this.
 
 # %%
 viewer = napari.Viewer()
@@ -144,11 +117,6 @@ viewer.add_image(x, name="image");
 # - When you are coding and debugging, close the napari viewer with `viewer.close()` to avoid problems with the two event loops of napari and jupyter.
 # - **If a cell is not executed (empty square brackets on the left of a cell) despite you running it, running it a second time right after will usually work.**
 # </div>
-
-# %% [markdown]
-# Let's add the ground truth annotations. Now we can easily explore how the cells move over time.
-#
-# If you zoom in, you will note that the dense annotations are not perfect segmentations, but rather circles placed roughly in the center of each nucleus.
 
 # %%
 def visualize_tracks(viewer, y, links=None, name=""):
@@ -180,13 +148,8 @@ def visualize_tracks(viewer, y, links=None, name=""):
 # %%
 visualize_tracks(viewer, y, links.to_numpy(), "ground_truth");
 
-# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true jp-MarkdownHeadingCollapsed=true tags=[]
 # ## Object detection using a pre-trained neural network
-
-# %% [markdown] tags=[]
-# Load a pretrained stardist model, detect nuclei in one image and visualize them.
-#
-# We have trained a StarDist model on this dataset for you.
 
 # %%
 idx = 0
@@ -194,10 +157,6 @@ idx = 0
 model = StarDist2D(None, name="stardist_breast_cancer", basedir="models")
 (detections, details), (prob, _) = model.predict_instances(x[idx], scale=(1, 1), nms_thresh=0.3, prob_thresh=0.3, return_predict=True)
 plot_img_label(x[idx], detections, lbl_title="detections")
-
-# %% [markdown]
-# Here we visualize in detail the polygons and probabbility maps we have detected with StarDist.
-# <!-- Notice that each object comes with a center point, which we can use to comnms_thresh=ise eprob_thresh= distances between objects. -->
 
 # %%
 coord, points, polygon_prob = details['coord'], details['points'], details['prob']
@@ -213,9 +172,6 @@ plt.imshow(prob, cmap='magma'); plt.axis('off')
 plt.tight_layout()
 plt.show() 
 
-# %% [markdown]
-# Detect centers and segment nuclei in all images of the time lapse.
-
 # %%
 prob_thres = 0.3
 nms_thres = 0.6
@@ -226,9 +182,6 @@ detections = np.array([xi[0][0] for xi in pred])
 centers = [xi[0][1]["points"] for xi in pred]
 center_probs = [xi[0][1]["prob"] for xi in pred]
 prob_maps = np.stack([xi[1][0] for xi in pred])
-
-# %% [markdown]
-# Visualize the dense detections. Note that they are still not linked and therefore randomly colored.
 
 # %%
 viewer = napari.viewer.current_viewer()
@@ -242,11 +195,8 @@ viewer.add_labels(detections, name=f"detections_scale_{scale}_nmsthres_{nms_thre
 viewer.grid.enabled = True
 
 
-# %% [markdown] jp-MarkdownHeadingCollapsed=true tags=[]
+# %% [markdown] jp-MarkdownHeadingCollapsed=true tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Build a candidate graph from the detections
-
-# %% [markdown]
-# TODO write description
 
 # %%
 def build_graph(detections, max_distance, detection_probs=None, drift=(0,0)):
@@ -376,11 +326,6 @@ def draw_graph(g, title=None, ax=None, height=None):
     ax.set_ylabel("y (spatial)");
 
 
-# %% [markdown]
-# We compare the candidate graph to the ground truth graph to get a rough idea
-#
-# TODO description
-
 # %%
 gt_graph, gt_luts = build_graph_from_tracks(y, links.to_numpy())
 candidate_graph, candidate_luts = build_graph(detections, max_distance=50, detection_probs=center_probs, drift=(-6 , 0))
@@ -391,20 +336,16 @@ draw_graph(gt_graph, "Ground truth graph", ax=ax0, height=detections[0].shape[0]
 draw_graph(candidate_graph, "Candidate graph", ax=ax1, height=detections[0].shape[0])
 
 
-# %% [markdown] jp-MarkdownHeadingCollapsed=true tags=[]
+# %% [markdown]
 # ## Network flow
 
-# %% [markdown]
-# TODO description
-
-# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Exercise 3.1
-# <div class="alert alert-block alert-info"><h3>Exercise 3.1: Write the flow constraint of the network flow</h3>
-#     
-# TODO precise instructions   
-# </div>
+# <div class="alert alert-block alert-info"><h3>Exercise 3.1: Write the flow constraint of the network flow</h3></div>
 
 # %%
+# Solution Exercise 3.1
+
 def graph2ilp_flow(graph, hyperparams):
     """"""
     
@@ -423,6 +364,7 @@ def graph2ilp_flow(graph, hyperparams):
             graph_flow.add_node(n, weight=0)
             graph_flow.add_edge(n, "death", weight=0)
         
+        
     edge_to_idx = {edge: i for i, edge in enumerate(graph.edges)}
     edge_to_idx_flow = {edge: i for i, edge in enumerate(graph_flow.edges)}
 
@@ -432,7 +374,7 @@ def graph2ilp_flow(graph, hyperparams):
     x = cp.Variable(E + V + E_flow, boolean=True)
     
     c_e = hyperparams["edge_factor"] * np.array([graph.get_edge_data(*e)["weight"] for e in graph.edges])
-    c_v = hyperparams["node_offset"] + hyperparams["node_factor"] * np.array([v for k, v in graph.nodes(data="weight")])
+    c_v = hyperparams["node_factor"] * np.array([v for k, v in graph.nodes(data="weight")])
     c_e_flow = hyperparams["edge_factor"] * np.array([graph_flow.get_edge_data(*e)["weight"] for e in graph_flow.edges])  # weight set to 0 above
     
     # print(c_v)
@@ -441,7 +383,7 @@ def graph2ilp_flow(graph, hyperparams):
     # constraint matrices: {E or V} x (E + V + E_flow)
     # columns: c_e, c_v, c_e_flow
     
-    # Consistency constraint edges
+    # Edge consistency constraint
     A0 = np.zeros((E, E + V + E_flow))
     A0[:E, :E] = 2 * np.eye(E)
     for edge in graph.edges:
@@ -449,7 +391,7 @@ def graph2ilp_flow(graph, hyperparams):
         A0[edge_id, E + edge[0]] = -1
         A0[edge_id, E + edge[1]] = -1
     
-    # Consistency constraint nodes
+    # Node consistency constraint
     A1 = np.zeros((V, E + V + E_flow))
     A1[:V, E:E+V] = 2 * np.eye(V)
     for node in graph.nodes:
@@ -471,10 +413,27 @@ def graph2ilp_flow(graph, hyperparams):
                 edge_id = edge_to_idx_flow[edge]
                 A1[node, E+V+edge_id] = -1
             
-    # Flow constraint
+    # Network flow constraint
     A2 = np.zeros((V, E + V + E_flow))
-    
-    ### YOUR CODE HERE ###
+    for node in graph.nodes:
+        for edge in graph.in_edges(node):
+            edge_id = edge_to_idx[edge]
+            A2[node, edge_id] = -1
+        
+        if node in graph_flow.nodes:
+            for edge in graph_flow.in_edges(node):
+                edge_id = edge_to_idx_flow[edge]
+                A2[node, E+V+edge_id] = -1
+            
+            
+        for edge in graph.out_edges(node):
+            edge_id = edge_to_idx[edge]
+            A2[node, edge_id] = 1
+         
+        if node in graph_flow.nodes:
+            for edge in graph_flow.out_edges(node):
+                edge_id = edge_to_idx_flow[edge]
+                A2[node, E+V+edge_id] = 1
     
     constraints = [
         A0 @ x <= 0, 
@@ -485,7 +444,6 @@ def graph2ilp_flow(graph, hyperparams):
     objective = cp.Minimize( c.T @ x)
 
     return cp.Problem(objective, constraints)
-
 
 # %%
 ilp_flow = graph2ilp_flow(candidate_graph, hyperparams={"node_factor": -1, "edge_factor": 1})
@@ -536,9 +494,6 @@ draw_graph(gt_graph, "Ground truth graph", ax=ax0, height=detections[0].shape[0]
 draw_graph(candidate_graph, "Candidate graph", ax=ax1, height=detections[0].shape[0])
 draw_graph(solved_graph_flow, f"Network flow (no divisions) - cost: {ilp_flow.value:.3f}", ax=ax2, height=detections[0].shape[0])
 
-
-# %% [markdown]
-# ### Recolor detections in napari according to solution
 
 # %%
 def recolor_detections(detections, graph, node_luts):
@@ -596,14 +551,13 @@ viewer.grid.enabled = True
 # ## Checkpoint 1
 # <div class="alert alert-block alert-success"><h3>Checkpoint 1: We have familiarized ourselves with the formulation of an ILP for linking and and have a feasible solution to a network flow.</h3></div>
 
-# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Exercise 3.2
-# <div class="alert alert-block alert-info"><h3>Exercise 3.2: Extend the network flow from Exercise 3.1 such that tracks can start and end at arbitrary time points.</h3>
-#     
-# TODO instructions
-# </div>
+# <div class="alert alert-block alert-info"><h3>Exercise 3.2: Extend the network flow from Exercise 3.1 such that tracks can start and end at arbitrary time points</h3></div>
 
 # %%
+# Solution Exercise 3.2
+
 def graph2ilp_nodiv(graph, hyperparams):
     """"""
     
@@ -612,8 +566,11 @@ def graph2ilp_nodiv(graph, hyperparams):
     graph_flow.add_node("appear", weight=0)
     graph_flow.add_node("death", weight=0)
     
-    
-    ### YOUR CODE HERE ###
+    for n, time in graph.nodes(data="time"):
+        graph_flow.add_node(n, weight=0)
+        graph_flow.add_edge("appear", n, weight=hyperparams["cost_appear"])
+        graph_flow.add_node(n, weight=0)
+        graph_flow.add_edge(n, "death", weight=hyperparams["cost_disappear"])
         
         
     edge_to_idx = {edge: i for i, edge in enumerate(graph.edges)}
@@ -667,6 +624,7 @@ def graph2ilp_nodiv(graph, hyperparams):
         for edge in graph.in_edges(node):
             edge_id = edge_to_idx[edge]
             A2[node, edge_id] = -1
+        
         if node in graph_flow.nodes:
             for edge in graph_flow.in_edges(node):
                 edge_id = edge_to_idx_flow[edge]
@@ -675,7 +633,8 @@ def graph2ilp_nodiv(graph, hyperparams):
             
         for edge in graph.out_edges(node):
             edge_id = edge_to_idx[edge]
-            A2[node, edge_id] = 1   
+            A2[node, edge_id] = 1
+         
         if node in graph_flow.nodes:
             for edge in graph_flow.out_edges(node):
                 edge_id = edge_to_idx_flow[edge]
@@ -690,6 +649,66 @@ def graph2ilp_nodiv(graph, hyperparams):
     objective = cp.Minimize( c.T @ x)
 
     return cp.Problem(objective, constraints)
+
+# %%
+# Alternative formulation Exercise 3.2 following Malin-Mayor et al. (2021).
+
+# def graph2ilp_nodiv(graph, hyperparams):
+#     """TODO cleanup"""
+#     edge_to_idx = {edge: i for i, edge in enumerate(graph.edges)}
+#     E = graph.number_of_edges()
+#     V = graph.number_of_nodes()
+#     x = cp.Variable(E + 3*V, boolean=True)
+    
+#     c_e = hyperparams["edge_factor"] * np.array([graph.get_edge_data(*e)["weight"] for e in graph.edges])
+#     # print(c_e)
+#     c_v = hyperparams["node_offset"] + hyperparams["node_factor"] * np.array([v for k, v in sorted(dict(graph.nodes(data="weight")).items())])
+#     # print(c_v)
+#     c_va = np.ones(V) * hyperparams["cost_appear"]
+#     c_vd = np.ones(V) * hyperparams["cost_disappear"]
+#     c = np.concatenate([c_e, c_v, c_va, c_vd])
+    
+#     # constraint matrices: {E or V} x (E + 3V)
+#     # columns: c_e, c_v, c_va, c_vd
+    
+#     A0 = np.zeros((E, E + 3 * V))
+#     A0[:E, :E] = 2 * np.eye(E)
+#     for edge in graph.edges:
+#         edge_id = edge_to_idx[edge]
+#         A0[edge_id, E + edge[0]] = -1
+#         A0[edge_id, E + edge[1]] = -1
+    
+#     # Appear continuation
+#     A1 = np.zeros((V, E + 3 * V))
+#     A1[:, E:E+V] = -np.eye(V)
+#     A1[:, E+V:E+2*V] = np.eye(V)
+    
+#     for node in graph.nodes:
+#         out_edges = graph.out_edges(node)
+#         for edge in out_edges:
+#             edge_id = edge_to_idx[edge]
+#             A1[node, edge_id] = 1
+     
+#     # Disappear continuation
+#     A2 = np.zeros((V, E + 3 * V))
+#     A2[:, E:E+V] = np.eye(V)
+#     A2[:, E+2*V:E+3*V] = - np.eye(V)
+    
+#     for node in graph.nodes:
+#         in_edges = graph.in_edges(node)
+#         for edge in in_edges:
+#             edge_id = edge_to_idx[edge]
+#             A2[node, edge_id] = -1
+    
+#     constraints = [
+#         A0 @ x <= 0, 
+#         A1 @ x == 0,
+#         A2 @ x == 0,
+#     ]   
+    
+#     objective = cp.Minimize( c.T @ x)
+    
+#     return cp.Problem(objective, constraints)
 
 # %%
 ilp_nodiv = graph2ilp_nodiv(candidate_graph, hyperparams={"cost_appear": 0.5, "cost_disappear": 0.5, "node_factor": -1, "edge_factor": 1})
@@ -735,19 +754,13 @@ viewer.grid.enabled = True
 # %% [markdown]
 # ## ILP model including divisions
 
-# %% [markdown] jp-MarkdownHeadingCollapsed=true tags=[]
+# %% [markdown] tags=[] jp-MarkdownHeadingCollapsed=true
 # ## Exercise 3.3
-# <div class="alert alert-block alert-info"><h3>Exercise 3.3: Complete yet another extension of the ILP such that it allows for cell divisions.</h3>
-#     
-# Specifically, add constraint A3 (split constraint). Think about why this is needed.
-#  
-# TODO: description
-#     
-# The formulation is adapted from Malin-Mayor, Caroline, et al. "Automated reconstruction of whole-embryo cell lineages by learning from sparse annotations." bioRxiv (2021).
-#     
-# </div>
+# <div class="alert alert-block alert-info"><h3>Exercise 3.3: Complete yet another extension of the ILP such that it allows for cell divisions</h3></div>
 
 # %%
+# Solution Exercise 3.3
+
 def graph2ilp_div(graph, hyperparams):
     """"""
     
@@ -834,9 +847,17 @@ def graph2ilp_div(graph, hyperparams):
     
     # At most 2 outgoing edges
     A3 = np.zeros((V, E + V + E_flow))
+    A3[:, E:E+V] = -2 * np.eye(V)
     
-    ### YOUR CODE HERE ###
+    for node in graph.nodes:
+        for edge in graph.out_edges(node):
+            edge_id = edge_to_idx[edge]
+            A3[node, edge_id] = 1
+            
     
+        for edge in graph_flow.out_edges(node):
+            edge_id = edge_to_idx_flow[edge]
+            A3[node, E + V + edge_id] = 2
     
     constraints = [
         A0 @ x <= 0, 
@@ -848,6 +869,80 @@ def graph2ilp_div(graph, hyperparams):
     objective = cp.Minimize( c.T @ x)
     
     return cp.Problem(objective, constraints)
+
+# %%
+# # Malin-Mayor et al. (2021) formulation
+
+# def graph2ilp_div(graph, hyperparams):
+#     """TODO cleanup"""
+#     edge_to_idx = {edge: i for i, edge in enumerate(graph.edges)}
+#     E = graph.number_of_edges()
+#     V = graph.number_of_nodes()
+#     x = cp.Variable(E + 3*V, boolean=True)
+    
+#     c_e = hyperparams["edge_factor"] * np.array([graph.get_edge_data(*e)["weight"] for e in graph.edges])
+#     c_v = hyperparams["node_offset"] + hyperparams["node_factor"] * np.array([v for k, v in sorted(dict(graph.nodes(data="weight")).items())])
+
+#     c_va = np.ones(V) * hyperparams["cost_appear"]
+#     c_vd = np.ones(V) * hyperparams["cost_disappear"]
+    
+#     c = np.concatenate([c_e, c_v, c_va, c_vd])
+    
+#     # constraint matrices: {E or V} x (E + 3V)
+#     # columns: ce, c_v, c_va, c_vd
+    
+#     A0 = np.zeros((E, E + 3 * V))
+#     A0[:E, :E] = 2 * np.eye(E)
+#     for edge in graph.edges:
+#         edge_id = edge_to_idx[edge]
+#         A0[edge_id, E + edge[0]] = -1
+#         A0[edge_id, E + edge[1]] = -1
+    
+#     # Appear continuation
+#     A1 = np.zeros((V, E + 3 * V))
+#     A1[:, E:E+V] = -np.eye(V)
+#     A1[:, E+V:E+2*V] = np.eye(V)
+    
+#     for node in graph.nodes:
+#         in_edges = graph.in_edges(node)
+#         for edge in in_edges:
+#             edge_id = edge_to_idx[edge]
+#             A1[node, edge_id] = 1
+     
+#     # Disappear continuation
+#     A2 = np.zeros((V, E + 3 * V))
+#     A2[:, E:E+V] = np.eye(V)
+#     A2[:, E+2*V:E+3*V] = - np.eye(V)
+    
+#     for node in graph.nodes:
+#         out_edges = graph.out_edges(node)
+#         for edge in out_edges:
+#             edge_id = edge_to_idx[edge]
+#             A2[node, edge_id] = -1
+    
+#     # At most 2 outgoing edges
+#     A3 = np.zeros((V, E + 3*V))
+#     A3[:, E:E+V] = -2*np.eye(V)
+#     A3[:, E+2*V:E+3*V] = 2 * np.eye(V)
+    
+#     for node in graph.nodes:
+#         out_edges = graph.out_edges(node)
+#         for edge in out_edges:
+#             edge_id = edge_to_idx[edge]
+#             A3[node, edge_id] = 1
+    
+#     constraints = [
+#         A0 @ x <= 0, 
+#         A1 @ x == 0,
+#         A2 @ x <= 0,
+#         A3 @ x <= 0,
+#     ]
+    
+    
+#     objective = cp.Minimize( c.T @ x)
+
+    
+#     return cp.Problem(objective, constraints)
 
 # %%
 ilp_div = graph2ilp_div(candidate_graph, hyperparams={"cost_appear": 0.15, "cost_disappear": 0.5, "node_offset": 0, "node_factor": -1, "edge_factor": 0.4})
@@ -889,16 +984,5 @@ draw_graph(solved_graph_div, f"ILP solution (with divisions) - cost: {ilp_div.va
 draw_graph(gt_graph, "Ground truth graph", ax=ax2)
 draw_graph(solved_graph_nodiv, f"ILP solution (no divisions) - cost: {ilp_nodiv.value:.3f}", ax=ax3)
 
-
-# %% [markdown] jp-MarkdownHeadingCollapsed=true tags=[]
-# ## Exercise 3.4
-# <div class="alert alert-block alert-info"><h3>Exercise 3.4: Try to improve the ILP-based tracking from exercise 3.3</h3>
-#
-# For example
-# - Tune the hyperparameters.
-# - Better edge features than drift-corrected euclidian distance.
-# - Tune the detection algorithm to avoid false negatives.
-#     
-# </div>
 
 # %%
